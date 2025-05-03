@@ -1,0 +1,60 @@
+{
+   "checksum": "d3b6f550f7aea57068955ba1f2af38c1",
+   "roots": {
+      "bookmark_bar": {
+         "children": [ {
+            "date_added": "13390000000000001",
+            "date_last_used": "0",
+            "guid": "61e12936-8a21-4998-96c8-86ca4af01b9d",
+            "id": "2",
+            "name": "RF",
+            "type": "url",
+            "url": "https://scale20.byjasco.com/RF/SignonMenuRF.aspx"
+         }, {
+            "date_added": "13390000000000002",
+            "date_last_used": "0",
+            "guid": "cd5dc094-1818-46ee-bcd3-f65da802c185",
+            "id": "3",
+            "name": "Inventory",
+            "type": "url",
+            "url": "https://scale20.byjasco.com/scale/insights/2723"
+         }, {
+            "date_added": "13390000000000003",
+            "date_last_used": "0",
+            "guid": "7553c599-c658-4082-9bed-d0a7e44904e5",
+            "id": "4",
+            "name": "Transaction history",
+            "type": "url",
+            "url": "https://scale20.byjasco.com/scale/insights/4026"
+         } ],
+         "date_added": "1746304686696482",
+         "date_last_used": "0",
+         "date_modified": "1746304686696482",
+         "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+         "id": "1",
+         "name": "Bookmarks bar",
+         "type": "folder"
+      },
+      "other": {
+         "children": [  ],
+         "date_added": "1746304686696482",
+         "date_last_used": "0",
+         "date_modified": "1746304686696482",
+         "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+         "id": "5",
+         "name": "Other bookmarks",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [  ],
+         "date_added": "1746304686696482",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+         "id": "6",
+         "name": "Mobile bookmarks",
+         "type": "folder"
+      }
+   },
+   "version": 1
+}

@@ -1,0 +1,9 @@
+# Byte‑compiled / optimized Python files
+__pycache__/
+*.py[cod]
+
+# Zoom control build artifact
+zoom_control.exe
+
+# IDE folders
+.vscode/

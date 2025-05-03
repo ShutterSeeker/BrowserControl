@@ -1,0 +1,2 @@
+[21280:19224:0503/153808.959:INFO:components\enterprise\browser\controller\chrome_browser_cloud_management_controller.cc:202] No machine level policy manager exists.
+[5248:14672:0503/153809.216:WARNING:ui\gl\direct_composition_support.cc:1195] QueryInterface to IDCompositionDevice4 failed: No such interface supported (0x80004002)

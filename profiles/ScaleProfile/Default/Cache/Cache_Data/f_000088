@@ -1,0 +1,357 @@
+﻿// Task		| By	| Date		    | Modification Description
+// ---------|-------|---------------|-------------------------
+//  197710  | NRJ   | 04/06/17      | Created
+//  207678  | MMM   | 07/06/17      | Added updateContainerQuantity to support upacking the container content quantity
+//  211054	| MMM	| 09/12/17	    | Handled the container nesting level
+//  248145	| TDA	| 03/11/20		| Removed evt from gridRowChanged Event
+
+"use strict"
+_webUi.shippingContainerInsight = function () {
+
+    var _suppressInventoryAttributesConfirmation = false;
+    var _suppressOpenManifestConfirmation = false;
+    var _suppressClosedManifestConfirmation = false;
+    var _shippingContainerUpdateQtyRequest = null;
+    var _updateQuantityUrl = null;
+    var _serialNumberScreenLoaded = false;
+    var _catchWeightScreenLoaded = false;
+    var _nestLevel = 0;
+
+    var nestLevel = GetQueryStringParams("nestLevel");
+    if (nestLevel !== undefined)
+        _nestLevel = parseInt(nestLevel);
+
+    // Update the document title with shipping container nest level
+    if (_nestLevel > 0) {
+        $("a[data-resourcekey='MNU_SHIPPINGCONTAINERINSIGHT']").prop("text", $("a[data-resourcekey='MNU_SHIPPINGCONTAINERINSIGHT']").prop("text") + " (" + _nestLevel + ")");
+        document.title = document.title + " (" + _nestLevel + ")";
+    }
+
+    $(document).ready(function () {
+        //Place holder for serial number deselection screen.
+        var newdiv = $("<div>", { id: "serialNumberPlaceholder" });
+        var newelement = $("<scale-serialinfo>").attr('params', '{data :_serialInfo}');
+        newdiv.append(newelement);
+
+        $("#UpdateQuantityModalDialog").parent().append(newdiv);
+
+        //Place holder for catch weight deselection screen.
+        var newdiv = $("<div>", { id: "catchWeightPlaceholder" });
+        var newelement = $("<scale-catchweightentry>").attr('params', '{data :_catchWeightInfo}');
+        newdiv.append(newelement);
+
+        $("#UpdateQuantityModalDialog").parent().append(newdiv);
+    });
+
+    var invokeUpdateContainerQuantityApi = function () {
+        _httpRequest.performPost(_updateQuantityUrl, _shippingContainerUpdateQtyRequest, _webUi.insightListPaneActions.refreshGridAndCallDefaultSuccessCallback, _webUi.shippingContainerInsight.updateContainerQtyErrorCallback, false);
+    };
+
+    var setUpdateQuantityRequest = function (url, internalContainerNum, quantityToUnpack, serialNumbers, catchWeights) {
+        _updateQuantityUrl = url;
+        _shippingContainerUpdateQtyRequest = new Object();
+        _shippingContainerUpdateQtyRequest.InternalContainerNumber = internalContainerNum;
+        _shippingContainerUpdateQtyRequest.Quantity = quantityToUnpack;
+        _shippingContainerUpdateQtyRequest.SerialNumbers = serialNumbers;
+        _shippingContainerUpdateQtyRequest.CatchWeights = catchWeights;
+
+        _suppressInventoryAttributesConfirmation = false
+        _suppressOpenManifestConfirmation = false;
+        _suppressClosedManifestConfirmation = false;
+    }
+
+    var promptForSerialNumberDeSelection = function (combinedModel) {
+
+        var serialInfo = {
+            InputPackedQty: parseFloat(combinedModel.NewQuantity),
+            Item: combinedModel.Item,
+            Company: combinedModel.Company,
+            QuantityUM: null,
+            Desc: combinedModel.ItemDesc,
+            InventorySts: null,
+            ContainerId: combinedModel.ParentContainerId
+        };
+
+        serialInfo.OperationCompleted = Q.defer();
+        window._serialInfo = serialInfo;
+        _httpRequest.performGet("/outbound/scaleapi/shippingContainersApi/shippingContainers-SerialNumbers?internalContainerNum=" + combinedModel.InternalContainerNumber,
+                    getSerialNumberSuccessCallback, getSerialNumberErrorCallback, false, false);
+
+        if (window._serialInfo.InputSerialNumber !== null) {
+            createSerialNumberViewModel();
+
+            //show manual entry screen
+            if (!_serialNumberScreenLoaded) {
+                System.import('/scale/dist/serialInfo/serialNumberEntry.component.js').then(function () {
+                    showSerialNumber(true);
+                    _serialNumberScreenLoaded = true;
+                });
+            }
+            else {
+                ko.cleanNode($('scale-serialinfo').get(0));
+                ko.applyBindings(undefined, $('scale-serialinfo').get(0));
+                showSerialNumber(true);
+            }
+            _serialInfo.OperationCompleted.promise.then(function (selectedSerialNumbers) {
+                showSerialNumber(false);
+                _shippingContainerUpdateQtyRequest.SerialNumbers = selectedSerialNumbers;
+                invokeUpdateContainerQuantityApi();
+                ko.cleanNode($('scale-serialinfo').get(0));
+
+            }, function (reason) {
+                showSerialNumber(false);
+                ko.cleanNode($('scale-serialinfo').get(0));
+            });
+
+            return true;
+        }
+        return false;
+    };
+
+    var createSerialNumberViewModel = function () {
+
+        _webUi.SerialNumberEntryViewModel = {};
+        _webUi.SerialNumberEntryViewModel.data = window._serialInfo;
+        _webUi.SerialNumberEntryViewModel.data.CallingScreenInfo = {};
+
+        // Remove or unselect mode - all serial numbers will be selected by default on screen load
+        _webUi.SerialNumberEntryViewModel.data.CallingScreenInfo.SerialNumberProcessType = 2;
+        _webUi.SerialNumberEntryViewModel.data.CallingScreenInfo.FormId = parseInt($("#formId")[0].value);
+        _webUi.SerialInfoTemplate = '/scale/dist/serialInfo/serialNumberEntry.component.html';
+    };
+
+    var getSerialNumberSuccessCallback = function (data) {
+        window._serialInfo.InputSerialNumber = data.GridData;
+    };
+
+    var getSerialNumberErrorCallback = function (jqXHR, textStatus, errorThrown) {
+        window._serialInfo.InputSerialNumber = null;
+    };
+
+    var showSerialNumber = function (show) {
+        if (show)
+            document.getElementById('serialNumberPlaceholder').style.display = 'block';
+        else
+            document.getElementById('serialNumberPlaceholder').style.display = 'none';
+    };
+
+
+    var promptForCatchWeightDeSelection = function (combinedModel) {
+        var catchWeightInfo = {
+            Item: combinedModel.Item,
+            ItemDescription: combinedModel.ItemDesc,
+            Company: combinedModel.Company,
+            Lot: combinedModel.Lot,
+            LotExpiration: combinedModel.LotExpirationDate,
+            Qty: parseFloat(combinedModel.NewQuantity),
+            QtyUM: combinedModel.QuantityUm,
+            LicensePlate: combinedModel.ParentContainerId,
+            CompanyList: (combinedModel.Company) ? [combinedModel.Company] : []
+        };
+
+        catchWeightInfo.operationCompleted = Q.defer();
+        window._catchWeightInfo = catchWeightInfo;
+        _httpRequest.performGet("/outbound/scaleapi/shippingContainersApi/shippingContainers-CatchWeights?internalContainerNum=" + combinedModel.InternalContainerNumber,
+                    getCatchWeightSuccessCallback, getCatchWeightErrorCallback, false, false);
+
+        if (window._catchWeightInfo.CatchWeightGrid !== undefined && window._catchWeightInfo.CatchWeightGrid !== null) {
+            createCatchWeightViewModel(combinedModel);
+
+            //show manual entry screen
+            if (!_catchWeightScreenLoaded) {
+                System.import('/scale/dist/catchWeight/catchWeight.component.js').then(function () {
+                    ko.cleanNode($('scale-catchweightentry').get(0));
+                    showCatchWeights(true);
+                    _catchWeightScreenLoaded = true;
+                });
+            }
+            else {
+                ko.cleanNode($('scale-catchweightentry').get(0));
+                ko.applyBindings(undefined, $('scale-catchweightentry').get(0));
+                showCatchWeights(true);
+            }
+            _catchWeightInfo.operationCompleted.promise.then(function (selectedCatchWeights) {
+                showCatchWeights(false);
+                _shippingContainerUpdateQtyRequest.CatchWeights = selectedCatchWeights;
+                invokeUpdateContainerQuantityApi();
+                ko.cleanNode($('scale-catchweightentry').get(0));
+
+            }, function (reason) {
+                showCatchWeights(false);
+                ko.cleanNode($('scale-catchweightentry').get(0));
+            });
+        }
+    };
+
+    var createCatchWeightViewModel = function (combinedModel) {
+
+        _webUi.CatchWeightEntryViewModel = {};
+        _webUi.CatchWeightEntryViewModel.data = window._catchWeightInfo;
+        _webUi.CatchWeightEntryViewModel.data.CallingScreenInfo = {};
+
+        // Remove or unselect mode and all catch weights will be selected by default
+        _webUi.CatchWeightEntryViewModel.data.CallingScreenInfo.CatchWeightProcessingType = 2;
+        _webUi.CatchWeightEntryViewModel.data.CallingScreenInfo.LpOrContainerIdResourceKey = 'CONTAINERID';
+        _webUi.CatchWeightTemplate = '/scale/dist/catchWeight/catchWeight.component.html';
+
+
+        // Get the total matching catch weight count for current leaf container from it's parent i.e. all the catch weights in parent whose internal line number
+        // item, company and lot value matches with current leaf container
+        var totalMatchingCatchWeightCountOfParent = window._catchWeightInfo.CatchWeightGrid().length;
+
+        // Set total number of matching catch weights left on the parent container after unpacking specified quantity
+        window._catchWeightInfo.Qty = (totalMatchingCatchWeightCountOfParent - combinedModel.Quantity) + parseFloat(combinedModel.NewQuantity);
+    };
+
+    var getCatchWeightSuccessCallback = function (data) {
+        window._catchWeightInfo.CatchWeightGrid = ko.observableArray([]);
+
+        $.each(data.GridData, function (index, row) {
+            window._catchWeightInfo.CatchWeightGrid.push(row);
+        });
+    };
+
+    var getCatchWeightErrorCallback = function (jqXHR, textStatus, errorThrown) {
+        window._catchWeightInfo.CatchWeightGrid = null;
+    };
+
+    var showCatchWeights = function (show) {
+        if (show)
+            document.getElementById('catchWeightPlaceholder').style.display = 'block';
+        else
+            document.getElementById('catchWeightPlaceholder').style.display = 'none';
+    };
+
+    var updateContainerQtyErrorCallback = function (jqXHR, textStatus, errorThrown) {
+        if (jqXHR.responseJSON && jqXHR.responseJSON.ErrorType === 27) {
+
+
+            _webUi.dialog.showYesNoConfirmation(jqXHR.responseJSON.Message, jqXHR.responseJSON.MessageCode).then(function (confirmed) {
+
+                if (jqXHR.responseJSON.ErrorCode === 'MSG_UNPACK19')
+                    _suppressClosedManifestConfirmation = (confirmed ? true : false);
+
+                if (jqXHR.responseJSON.ErrorCode === 'MSG_PACK28')
+                    _suppressOpenManifestConfirmation = (confirmed ? true : false);
+
+                if (jqXHR.responseJSON.ErrorCode === 'MSG_UNPACK20')
+                    _suppressInventoryAttributesConfirmation = (confirmed ? true : false);
+
+                if (confirmed) {
+                    _shippingContainerUpdateQtyRequest.SuppressInventoryAttributesConfirmation = _suppressInventoryAttributesConfirmation;
+                    _shippingContainerUpdateQtyRequest.SuppressOpenManifestConfirmation = _suppressOpenManifestConfirmation;
+                    _shippingContainerUpdateQtyRequest.SuppressClosedManifestConfirmation = _suppressClosedManifestConfirmation;
+                    _httpRequest.performPost(_updateQuantityUrl, _shippingContainerUpdateQtyRequest, _webUi.insightListPaneActions.refreshGridAndCallDefaultSuccessCallback, _webUi.shippingContainerInsight.updateContainerQtyErrorCallback, false);
+                }
+            });
+        }
+        else
+            _httpRequest.defaultErrorCallback(jqXHR, textStatus, errorThrown);
+    };
+
+    return {
+
+        gridRowChanged: function () {
+            // Store the container nest level in detail pane data model
+            if (_webUi.detailPane !== undefined && _webUi.detailPane.detailPaneModel !== undefined && _webUi.detailPane.detailPaneModel !== null)
+                _webUi.detailPane.detailPaneModel["NestLevel"] = _nestLevel + 1;
+        },
+
+        successCallBackForRemoveFromNesting: function (jqXHR, textStatus, errorThrown) {
+
+            if (jqXHR.responseJSON && jqXHR.responseJSON.ErrorType === 27) {
+
+                var requestListFromSelection = [];
+
+                var postUrl = '/scale/trans/nestContainer?excludeFromNavTrail=Y';
+
+                _webUi.dialog.showYesNoConfirmation(jqXHR.responseJSON.Message, jqXHR.responseJSON.MessageCode).then(function (confirmed) {
+
+                    if (confirmed) {
+
+                        var gridObject = $("[data-widget=Grid]"), requestObject = {};
+                        var selectedRows = gridObject.igGrid("selectedRows").filter(function (value) { return value.index >= 0 && !value.element.hasClass("ui-iggrid-groupedrow"); });
+
+                        if (selectedRows)
+                            selectedRows.sort(function (a, b) { return a.index - b.index });
+
+                        var rowIndex = gridObject.igGrid('allRows').not('tr[data-grouprow=true]').index(selectedRows[0].element);
+
+                        if (rowIndex >= 0) {
+
+                            requestObject["InternalContainerNumber"] = gridObject.data('igGrid').dataSource.dataView()[rowIndex]["INTERNAL_CONTAINER_NUM"];
+                            requestObject["ContainerId"] = gridObject.data('igGrid').dataSource.dataView()[rowIndex]["CONTAINER_ID"];
+                        }
+
+                        requestListFromSelection[0] = requestObject;
+
+                        _httpRequest.openUrlInCurrentTabWithPost(requestListFromSelection, postUrl)
+                    }
+                    else {
+
+                        //return success message
+                        var response = {};
+
+                        response.Message = ResourceManager.GetResource('MSG_REMOVENESTING04', ResourceManager.ResourceType.Msg).TEXT
+                        response.MessageCode = "MSG_REMOVENESTING04";
+
+                        _webUi.insightListPaneActions.refreshGridAndCallDefaultSuccessCallback(response, textStatus, jqXHR);
+                    }
+
+                });
+            }
+            else
+                _httpRequest.defaultErrorCallback(jqXHR, textStatus, errorThrown);
+        },
+
+        updateContainerQtyErrorCallback: function (jqXHR, textStatus, errorThrown) {
+            updateContainerQtyErrorCallback(jqXHR, textStatus, errorThrown);
+        },
+
+        updateContainerQuantity: function (evt) {
+
+            var queryString = $.param(_webUi.insightListPaneActions.getQueryString(evt));
+            var combinedModel = _webUi.insightListPaneActions.createCombinedModel(evt);
+            var evtData = evt.data;
+            var isItemSerialNumberInventoryTrack = false;
+
+            // Update the range validation value and message on quantity editor control
+            _webUi.validate.addOrUpdateValidationRule($("input[name=UpdateQuantityEditor]"),
+                'range',
+                [0, combinedModel.Quantity],
+                ResourceManager.GetResource("MSG_NUM15", ResourceManager.ResourceType.Msg, "0", combinedModel.Quantity).TEXT);
+
+            // Validate the form
+            if (_webUi.validate.validateModalDialogForm(evt)) {
+
+                setUpdateQuantityRequest(evtData.POSTServiceURL, combinedModel.InternalContainerNumber, parseFloat(combinedModel.NewQuantity));
+
+                // Popup serial number or catch weight select screen if quantity entered is not equal to 0 or current container quantity
+                // And container has either serial numbers or catch weights associated with it
+                if (parseFloat(combinedModel.NewQuantity) !== 0 && parseFloat(combinedModel.NewQuantity) !== combinedModel.Quantity
+                    && (combinedModel.HasSerialNumbers === 'Y' || combinedModel.HasCatchWeights === 'Y')) {
+
+                    // Hide update quantity window
+                    if (evt && evt.data.ModalDialogName)
+                        _webUi.dialog.hideModalDialog(evt.data.ModalDialogName);
+
+                    if (combinedModel.HasSerialNumbers === 'Y')
+                        promptForSerialNumberDeSelection(combinedModel);
+                    else
+                        promptForCatchWeightDeSelection(combinedModel);
+                }
+                else {
+                    invokeUpdateContainerQuantityApi();
+
+                    // Hide update quantity window
+                    if (evt && evt.data.ModalDialogName)
+                        _webUi.dialog.hideModalDialog(evt.data.ModalDialogName);
+                }
+            }
+
+            return false;
+        }
+
+    }
+
+}();
