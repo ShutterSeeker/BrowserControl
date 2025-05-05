@@ -1,7 +1,0 @@
-[24428:3484:0505/082916.286:INFO:components\enterprise\browser\controller\chrome_browser_cloud_management_controller.cc:202] No machine level policy manager exists.
-[10772:17752:0505/082916.547:WARNING:ui\gl\direct_composition_support.cc:1195] QueryInterface to IDCompositionDevice4 failed: No such interface supported (0x80004002)
-[4916:15692:0505/082917.053:WARNING:net\spdy\spdy_session.cc:2997] Received HEADERS for invalid stream 3
-[4916:15692:0505/082917.054:WARNING:net\spdy\spdy_session.cc:2997] Received HEADERS for invalid stream 1
-[4916:15692:0505/082917.056:WARNING:net\spdy\spdy_session.cc:2997] Received HEADERS for invalid stream 5
-[4916:9036:0505/082922.702:WARNING:net\extras\sqlite\sqlite_persistent_store_backend_base.cc:176] Failed to post task from FlushAndNotifyInBackground@net\extras\sqlite\sqlite_persistent_store_backend_base.cc:226 to client_task_runner_.
-[4916:9036:0505/082922.702:WARNING:net\extras\sqlite\sqlite_persistent_store_backend_base.cc:176] Failed to post task from FlushAndNotifyInBackground@net\extras\sqlite\sqlite_persistent_store_backend_base.cc:226 to client_task_runner_.
