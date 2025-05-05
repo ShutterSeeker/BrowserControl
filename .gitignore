@@ -7,3 +7,6 @@ zoom_control.exe
 
 # IDE folders
 .vscode/
+
+# Chrome profile data
+browser_control/profiles/
