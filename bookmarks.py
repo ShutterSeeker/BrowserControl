@@ -1,11 +1,19 @@
-import os, time, uuid, json
+import os, time, uuid, json, sys
+from browser_control.settings import resource_path
+
+def get_profiles_path():
+    # if frozen (running as EXE), look next to the EXE
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "profiles")
+    # else (running from source), load the one in browser_control/
+    return resource_path("profiles")
 
 def generate_bookmarks(department: str):
     """
     Create Chrome bookmark JSON for ScaleProfile based on department.
     """
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    bookmarks_path = os.path.join(base_dir, "profiles", "ScaleProfile", "Default", "Bookmarks")
+    base_dir = get_profiles_path()
+    bookmarks_path = os.path.join(base_dir, "ScaleProfile", "Default", "Bookmarks")
 
     # Base and department-specific links
     base = [{"name": "RF", "url": "https://scale20.byjasco.com/RF/SignonMenuRF.aspx"}]

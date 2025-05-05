@@ -1,21 +1,29 @@
 # browser_control/main.py
 
+import sys
 import os
 import tkinter as tk
 from tkinter import ttk
 import subprocess
-from browser_control.settings import load_settings, save_settings, save_position, save_window_geometry
-from browser_control.launcher import launch_app, close_app, driver_dc, driver_sc, scale_hwnd, pass_window_geometry
+from browser_control.settings import load_settings, save_settings_click, save_position, resource_path
+from browser_control.launcher import launch_app, close_app, pass_window_geometry
 import browser_control.launcher as launcher
 from browser_control.zoom_controls import ZoomControls
 from browser_control.tools_tab import create_tools_tab
+
+def get_exe_path():
+    # if frozen (running as EXE), look next to the EXE
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "zoom_control.exe")
+    # else (running from source), load the one in browser_control/
+    return resource_path("zoom_control.exe")
 
 # Helper to run AHK zoom control
 def run_ahk_zoom(percent: str) -> str:
     hwnd = launcher.scale_hwnd
     if not hwnd:
         return "Scale window not found"
-    exe_path = os.path.join(os.path.dirname(__file__), "zoom_control.exe")
+    exe_path = get_exe_path()
     if not os.path.isfile(exe_path):
         return "Zoom control executable not found"
     loops_map = {"100":2, "150":3, "200":5, "250":6, "300":7}
@@ -173,7 +181,8 @@ def build_ui():
     ttk.Combobox(settings_frame, textvariable=zoom_var, values=ZOOM_OPTIONS, state="readonly").grid(row=1, column=1, sticky="ew", padx=5)
     tk.Checkbutton(settings_frame, text="Dark Mode (Decant)", variable=dark_var, bg="#2b2b2b", fg="white", selectcolor="#2b2b2b").grid(row=2, column=0, columnspan=2, pady=5)
     def on_save_settings():
-        save_settings(department_var.get(), dark_var.get(), zoom_var.get(), root.winfo_x(), root.winfo_y())
+        cfg = load_settings()
+        save_settings_click(department_var.get(), dark_var.get(), zoom_var.get())
         pass_window_geometry()
         error_var.set("Settings saved")
     save_btn = ttk.Button(settings_frame, text="Save Settings", command=on_save_settings)
@@ -186,4 +195,5 @@ def build_ui():
 
 
 if __name__ == "__main__":
+    print("build_ui() launching…")
     build_ui()

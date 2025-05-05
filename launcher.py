@@ -8,12 +8,11 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
-from screeninfo import get_monitors
 from browser_control.bookmarks import generate_bookmarks
 from browser_control.zoom_controls import ZoomControls
+from browser_control.settings import load_settings, save_window_geometry
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-from browser_control.settings import load_settings, save_window_geometry
 from selenium.common.exceptions import StaleElementReferenceException
 
 # Global ZoomControls instance, set after launch
@@ -137,11 +136,6 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             # create/prepare profiles & bookmarks
             generate_bookmarks(sel)
 
-            # compute window sizes
-            mon = get_monitors()[0]
-            rw = int(mon.width * 0.25)
-            lw = mon.width - rw
-
             # DC window
             service_dc = Service(ChromeDriverManager().install())
             opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -154,7 +148,8 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             
             driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
             driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
-            driver_dc.get("https://dc.byjasco.com/LiveMetrics")
+            #driver_dc.get("https://dc.byjasco.com/LiveMetrics")
+            driver_dc.get(cfg['dc_link'])
 
             # Scale window
             service_sc = Service(ChromeDriverManager().install())
@@ -173,11 +168,12 @@ def launch_app(department_var, dark_mode_var, zoom_var):
                     pos["x"], pos["y"], size["width"], size["height"]
                 ):
                     scale_hwnd = w._hWnd
-                    #print(f"Scale HWND found: {scale_hwnd}")
+                    print(f"Scale HWND found: {scale_hwnd}")
                     break
             else:
                 print("Could not find Scale window in PyGetWindow")
-            driver_sc.get("https://scale20.byjasco.com/RF/SignonMenuRF.aspx")
+            #driver_sc.get("https://scale20.byjasco.com/RF/SignonMenuRF.aspx")
+            driver_sc.get(cfg['sc_link'])
 
             # Attach ZoomControls
             zoomer = ZoomControls(driver_sc, zoom_var)

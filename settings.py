@@ -1,13 +1,25 @@
 # browser_control/settings.py
-import os
+import os, sys
 import configparser
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "settings.ini")
+def resource_path(rel_path):
+    # when frozen by PyInstaller, files are unpacked to _MEIPASS
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel_path)
+
+def get_settings_path():
+    # if frozen (running as EXE), look next to the EXE
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), "settings.ini")
+    # else (running from source), load the one in browser_control/
+    return resource_path("settings.ini")
+
+CONFIG_FILE = get_settings_path()
 SECTION = "Settings"
 
 # Default values for all expected settings
 DEFAULTS = {
-    'department': 'DECANT.WS.1',
+    'department': 'DECANT.WS.5',
     'zoom_var': '200',
     'darkmode': 'True',
     'win_x': '41',
@@ -107,4 +119,19 @@ def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
         cfg.getint('win_x'), cfg.getint('win_y'),
         dc_x, dc_y, dc_w, dc_h,
         sc_x, sc_y, sc_w, sc_h
+    )
+
+def save_settings_click(department, darkmode, zoom_var):
+    """
+    Save DC and SC window position & size.
+    """
+    # reuse save_settings to persist geometry changes
+    cfg = load_settings()
+    save_settings(
+        department,
+        darkmode,
+        zoom_var,
+        cfg.getint('win_x'), cfg.getint('win_y'),
+        cfg.getint('dc_x'), cfg.getint('dc_y'), cfg.getint('dc_width'), cfg.getint('dc_height'),
+        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height')
     )
