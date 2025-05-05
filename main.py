@@ -112,11 +112,12 @@ def build_ui():
     anim_after_id = None
     dot_count = 0
 
-    def animate_dots():
+    def animate_spinner():
+        spinner_chars = ['|', '/', '–', '\\']
         nonlocal dot_count, anim_after_id
-        dot_count = (dot_count % 3) + 1
-        error_var.set("Launching chrome" + "." * dot_count)
-        anim_after_id = root.after(500, animate_dots)
+        dot_count = (dot_count + 1) % len(spinner_chars)
+        error_var.set(f"Launching chrome {spinner_chars[dot_count]}")
+        anim_after_id = root.after(200, animate_spinner)
 
     def stop_animation():
         nonlocal anim_after_id
@@ -143,7 +144,7 @@ def build_ui():
     def on_launch_toggle():
         nonlocal anim_after_id
         launch_btn.state(['disabled'])
-        animate_dots()
+        animate_spinner()
         launch_app(department_var, dark_var, zoom_var)
         check_ready()
         launch_btn.config(text='Close', command=on_close_app)

@@ -1,95 +1,110 @@
 # browser_control/settings.py
-
 import os
 import configparser
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "settings.ini")
+SECTION = "Settings"
+
+# Default values for all expected settings
+DEFAULTS = {
+    'department': 'DECANT.WS.1',
+    'zoom_var': '200',
+    'darkmode': 'True',
+    'win_x': '41',
+    'win_y': '1210',
+    'dc_x': '1747',
+    'dc_y': '0',
+    'dc_width': '516',
+    'dc_height': '1471',
+    'sc_x': '-7',
+    'sc_y': '0',
+    'sc_width': '1768',
+    'sc_height': '1471'
+}
+
 
 def load_settings():
     """
-    Return a dict of saved settings (or defaults).
+    Load settings from the INI file and return the SectionProxy for the Settings section.
+    Ensures all default keys exist so get(), getboolean(), getint() won't KeyError.
     """
-    cfg = configparser.ConfigParser()
+    config = configparser.ConfigParser()
+    # read existing config; missing file is okay
     if os.path.exists(CONFIG_FILE):
-        cfg.read(CONFIG_FILE)
-    s = cfg["Settings"] if "Settings" in cfg else {}
-    return {
-        # existing settings…
-        "department": s.get("department", ""),
-        "darkmode": s.getboolean("darkmode", False),
-        "zoom_var": s.get("zoom_var", ""),
-        "win_x": int(s.get("win_x", 0)),
-        "win_y": int(s.get("win_y", 0)),
-        # DC window geometry
-        "dc_x": int(s.get("dc_x", 0)),
-        "dc_y": int(s.get("dc_y", 0)),
-        "dc_width": int(s.get("dc_width", 0)),
-        "dc_height": int(s.get("dc_height", 0)),
-        # SC window geometry
-        "sc_x": int(s.get("sc_x", 0)),
-        "sc_y": int(s.get("sc_y", 0)),
-        "sc_width": int(s.get("sc_width", 0)),
-        "sc_height": int(s.get("sc_height", 0)),
-    }
+        config.read(CONFIG_FILE)
+    # ensure the section exists
+    if not config.has_section(SECTION):
+        config.add_section(SECTION)
+    section = config[SECTION]
+    # populate defaults for missing keys
+    for key, val in DEFAULTS.items():
+        if key not in section:
+            section[key] = val
+    return section
 
-def save_settings(department, darkmode, zoom_var, win_x, win_y):
+
+def save_settings(department, darkmode, zoom_var, win_x, win_y,
+                  dc_x, dc_y, dc_width, dc_height,
+                  sc_x, sc_y, sc_width, sc_height):
     """
-    Save the basic UI settings.
+    Save all UI settings and window geometry back to the INI file under the Settings section.
     """
-    cfg = configparser.ConfigParser()
+    config = configparser.ConfigParser()
     if os.path.exists(CONFIG_FILE):
-        cfg.read(CONFIG_FILE)
-    if not cfg.has_section("Settings"):
-        cfg.add_section("Settings")
+        config.read(CONFIG_FILE)
+    if not config.has_section(SECTION):
+        config.add_section(SECTION)
 
-    cfg.set("Settings", "department", department)
-    cfg.set("Settings", "darkmode", str(darkmode))
-    cfg.set("Settings", "zoom_var", zoom_var)
-    cfg.set("Settings", "win_x", str(win_x))
-    cfg.set("Settings", "win_y", str(win_y))
+    # write basic settings
+    config.set(SECTION, 'department', department)
+    config.set(SECTION, 'darkmode', str(darkmode))
+    config.set(SECTION, 'zoom_var', zoom_var)
+    # write main window position
+    config.set(SECTION, 'win_x', str(win_x))
+    config.set(SECTION, 'win_y', str(win_y))
+    # write DC window geometry
+    config.set(SECTION, 'dc_x', str(dc_x))
+    config.set(SECTION, 'dc_y', str(dc_y))
+    config.set(SECTION, 'dc_width', str(dc_width))
+    config.set(SECTION, 'dc_height', str(dc_height))
+    # write SC window geometry
+    config.set(SECTION, 'sc_x', str(sc_x))
+    config.set(SECTION, 'sc_y', str(sc_y))
+    config.set(SECTION, 'sc_width', str(sc_width))
+    config.set(SECTION, 'sc_height', str(sc_height))
 
-    with open(CONFIG_FILE, "w") as f:
-        cfg.write(f)
+    with open(CONFIG_FILE, 'w') as f:
+        config.write(f)
 
-def save_position(x: int, y: int):
+
+def save_position(x, y):
     """
-    Save the main UI window position.
+    Save just the main UI window position.
     """
-    cfg = configparser.ConfigParser()
-    if os.path.exists(CONFIG_FILE):
-        cfg.read(CONFIG_FILE)
-    if not cfg.has_section("Settings"):
-        cfg.add_section("Settings")
+    # reuse save_settings to persist geometry changes
+    cfg = load_settings()
+    save_settings(
+        cfg.get('department'),
+        cfg.getboolean('darkmode'),
+        cfg.get('zoom_var'),
+        x, y,
+        cfg.getint('dc_x'), cfg.getint('dc_y'), cfg.getint('dc_width'), cfg.getint('dc_height'),
+        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height')
+    )
 
-    cfg.set("Settings", "win_x", str(x))
-    cfg.set("Settings", "win_y", str(y))
 
-    with open(CONFIG_FILE, "w") as f:
-        cfg.write(f)
-
-def save_window_geometry(
-    dc_x: int, dc_y: int, dc_w: int, dc_h: int,
-    sc_x: int, sc_y: int, sc_w: int, sc_h: int
-):
+def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
+                         sc_x, sc_y, sc_w, sc_h):
     """
     Save DC and SC window position & size.
     """
-    cfg = configparser.ConfigParser()
-    if os.path.exists(CONFIG_FILE):
-        cfg.read(CONFIG_FILE)
-    if not cfg.has_section("Settings"):
-        cfg.add_section("Settings")
-
-    # DC geometry
-    cfg.set("Settings", "dc_x", str(dc_x))
-    cfg.set("Settings", "dc_y", str(dc_y))
-    cfg.set("Settings", "dc_width", str(dc_w))
-    cfg.set("Settings", "dc_height", str(dc_h))
-    # SC geometry
-    cfg.set("Settings", "sc_x", str(sc_x))
-    cfg.set("Settings", "sc_y", str(sc_y))
-    cfg.set("Settings", "sc_width", str(sc_w))
-    cfg.set("Settings", "sc_height", str(sc_h))
-
-    with open(CONFIG_FILE, "w") as f:
-        cfg.write(f)
+    # reuse save_settings to persist geometry changes
+    cfg = load_settings()
+    save_settings(
+        cfg.get('department'),
+        cfg.getboolean('darkmode'),
+        cfg.get('zoom_var'),
+        cfg.getint('win_x'), cfg.getint('win_y'),
+        dc_x, dc_y, dc_w, dc_h,
+        sc_x, sc_y, sc_w, sc_h
+    )
