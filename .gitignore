@@ -1,4 +1,4 @@
-# Byte‑compiled / optimized Python files
+# Bytecompiled / optimized Python files
 __pycache__/
 *.py[cod]
 
@@ -7,3 +7,6 @@ zoom_control.exe
 
 # IDE folders
 .vscode/
+
+# Chrome profile data
+browser_control/profiles/

@@ -2,6 +2,7 @@
 
 import threading
 import os
+import sys
 import time
 import pygetwindow as gw
 from selenium import webdriver
@@ -10,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from browser_control.bookmarks import generate_bookmarks
 from browser_control.zoom_controls import ZoomControls
-from browser_control.settings import load_settings, save_window_geometry
+from browser_control.settings import load_settings, save_window_geometry, resource_path
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import StaleElementReferenceException
@@ -100,6 +101,19 @@ def pass_window_geometry():
         )
         #print(f"[DEBUG] Geometry saved")
 
+def get_profile_path(profile) -> str:
+    """
+    Returns the absolute path to the Chrome Bookmarks file:
+    - Frozen EXE: <same-folder-as-EXE>/profiles/ScaleProfile/Default/Bookmarks
+    - Source run: browser_control/profiles/ScaleProfile/Default/Bookmarks
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        return os.path.join(exe_dir, "profiles", profile)
+    # running from source: use resource_path to drill into our package
+    rel = os.path.join("profiles", profile)
+    return resource_path(rel)
+
 
 def launch_app(department_var, dark_mode_var, zoom_var):
     """
@@ -113,11 +127,10 @@ def launch_app(department_var, dark_mode_var, zoom_var):
     def _worker():
         #global driver_sc
         global zoom_controller, scale_hwnd, driver_dc, driver_sc
-        try:
+        try:            
             # 1. Compute a real, absolute path
-            base_dir   = os.path.dirname(os.path.abspath(__file__))
-            dc_profile = os.path.join(base_dir, "profiles", "LiveMetricsProfile")
-            sc_profile = os.path.join(base_dir, "profiles", "ScaleProfile")
+            dc_profile = get_profile_path("LiveMetricsProfile")
+            sc_profile = get_profile_path("ScaleProfile")
 
             # 2. Make sure it exists
             os.makedirs(dc_profile, exist_ok=True)
