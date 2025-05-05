@@ -1,3 +1,3 @@
-2025/05/03-15:38:09.068 2ebc Reusing MANIFEST C:\BrowserProject\browser_control\profiles\LiveMetricsProfile\Default\Local Storage\leveldb/MANIFEST-000001
-2025/05/03-15:38:09.075 2ebc Recovering log #3
-2025/05/03-15:38:09.078 2ebc Reusing old log C:\BrowserProject\browser_control\profiles\LiveMetricsProfile\Default\Local Storage\leveldb/000003.log 
+2025/05/05-08:29:13.182 19b0 Reusing MANIFEST C:\Users\bbecker\source\repos\BrowserProject\browser_control\profiles\LiveMetricsProfile\Default\Local Storage\leveldb/MANIFEST-000001
+2025/05/05-08:29:13.190 19b0 Recovering log #3
+2025/05/05-08:29:13.192 19b0 Reusing old log C:\Users\bbecker\source\repos\BrowserProject\browser_control\profiles\LiveMetricsProfile\Default\Local Storage\leveldb/000003.log 

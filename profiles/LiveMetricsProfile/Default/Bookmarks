@@ -1,22 +1,19 @@
 {
-   "checksum": "7d6d8071cf3ba8df198768070440b28e",
+   "checksum": "6b60c6c4f532bb1965a714b30ddd7319",
    "roots": {
       "bookmark_bar": {
          "children": [ {
-            "date_added": "13390500792511221",
+            "date_added": "1746451750652798",
             "date_last_used": "0",
-            "guid": "8801b9d4-2a7d-48c2-a154-2b7f6b8e7c54",
-            "id": "5",
-            "meta_info": {
-               "power_bookmark_meta": ""
-            },
-            "name": "Live Metrics",
+            "guid": "3f13bdd3-1db1-4b51-875d-416ef64f2d93",
+            "id": "2",
+            "name": "Live metrics",
             "type": "url",
             "url": "https://dc.byjasco.com/LiveMetrics"
          } ],
-         "date_added": "13390500781350337",
+         "date_added": "1746451750652791",
          "date_last_used": "0",
-         "date_modified": "13390500812477470",
+         "date_modified": "1746451750652791",
          "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
          "id": "1",
          "name": "Bookmarks bar",
@@ -24,21 +21,21 @@
       },
       "other": {
          "children": [  ],
-         "date_added": "13390500781350342",
+         "date_added": "1746451750652791",
          "date_last_used": "0",
-         "date_modified": "13390500792511221",
+         "date_modified": "1746451750652791",
          "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
-         "id": "2",
+         "id": "3",
          "name": "Other bookmarks",
          "type": "folder"
       },
       "synced": {
          "children": [  ],
-         "date_added": "13390500781350344",
+         "date_added": "1746451750652791",
          "date_last_used": "0",
          "date_modified": "0",
          "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
-         "id": "3",
+         "id": "4",
          "name": "Mobile bookmarks",
          "type": "folder"
       }

@@ -1,0 +1,45 @@
+{
+    "checksum": "",
+    "roots": {
+        "bookmark_bar": {
+            "children": [
+                {
+                    "date_added": "1746451750652798",
+                    "guid": "3f13bdd3-1db1-4b51-875d-416ef64f2d93",
+                    "id": "1",
+                    "name": "Live metrics",
+                    "type": "url",
+                    "url": "https://dc.byjasco.com/LiveMetrics"
+                }
+            ],
+            "date_added": "1746451750652791",
+            "date_last_used": "0",
+            "date_modified": "1746451750652791",
+            "guid": "e6716f51-ba32-4a41-9e94-2f2959e21169",
+            "id": "1",
+            "name": "Bookmarks bar",
+            "type": "folder"
+        },
+        "other": {
+            "children": [],
+            "date_added": "1746451750652791",
+            "date_last_used": "0",
+            "date_modified": "1746451750652791",
+            "guid": "0298bac6-9984-4346-9961-25da98484dec",
+            "id": "2",
+            "name": "Other bookmarks",
+            "type": "folder"
+        },
+        "synced": {
+            "children": [],
+            "date_added": "1746451750652791",
+            "date_last_used": "0",
+            "date_modified": "0",
+            "guid": "8a6c8851-89d5-4240-9869-c0a958ec6895",
+            "id": "3",
+            "name": "Mobile bookmarks",
+            "type": "folder"
+        }
+    },
+    "version": 1
+}

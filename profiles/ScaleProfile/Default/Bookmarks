@@ -3,33 +3,33 @@
    "roots": {
       "bookmark_bar": {
          "children": [ {
-            "date_added": "13390000000000001",
+            "date_added": "1746451750649718",
             "date_last_used": "0",
-            "guid": "61e12936-8a21-4998-96c8-86ca4af01b9d",
+            "guid": "ceae3133-5c01-4d26-9d5a-96fb3a070aa6",
             "id": "2",
             "name": "RF",
             "type": "url",
             "url": "https://scale20.byjasco.com/RF/SignonMenuRF.aspx"
          }, {
-            "date_added": "13390000000000002",
+            "date_added": "1746451750649749",
             "date_last_used": "0",
-            "guid": "cd5dc094-1818-46ee-bcd3-f65da802c185",
+            "guid": "d9cfa018-89f6-417b-9fc8-cf73e19d14ee",
             "id": "3",
             "name": "Inventory",
             "type": "url",
             "url": "https://scale20.byjasco.com/scale/insights/2723"
          }, {
-            "date_added": "13390000000000003",
+            "date_added": "1746451750649760",
             "date_last_used": "0",
-            "guid": "7553c599-c658-4082-9bed-d0a7e44904e5",
+            "guid": "904bec05-6850-4b0c-8c67-f4179a9bc531",
             "id": "4",
             "name": "Transaction history",
             "type": "url",
             "url": "https://scale20.byjasco.com/scale/insights/4026"
          } ],
-         "date_added": "1746304686696482",
+         "date_added": "1746451750649713",
          "date_last_used": "0",
-         "date_modified": "1746304686696482",
+         "date_modified": "1746451750649713",
          "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
          "id": "1",
          "name": "Bookmarks bar",
@@ -37,9 +37,9 @@
       },
       "other": {
          "children": [  ],
-         "date_added": "1746304686696482",
+         "date_added": "1746451750649713",
          "date_last_used": "0",
-         "date_modified": "1746304686696482",
+         "date_modified": "1746451750649713",
          "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
          "id": "5",
          "name": "Other bookmarks",
@@ -47,7 +47,7 @@
       },
       "synced": {
          "children": [  ],
-         "date_added": "1746304686696482",
+         "date_added": "1746451750649713",
          "date_last_used": "0",
          "date_modified": "0",
          "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
