@@ -84,7 +84,9 @@ def create_tools_tab(notebook, department_var):
             LI.LOCATION,
             LI.ITEM,
             ON_HAND_QTY = CONVERT(INT, LI.ON_HAND_QTY),
-            LI.LOGISTICS_UNIT
+            TO_LOC = LI.USER_DEF1,
+            LI.LOGISTICS_UNIT,
+            UM_MATCH = CASE WHEN ICR.QUANTITY_UM = RIGHT(LEFT(LI.USER_DEF1, 7), 2) THEN 1 ELSE 0 END
         FROM LOCATION_INVENTORY LI
         INNER JOIN ITEM_CROSS_REFERENCE ICR ON ICR.ITEM = LI.ITEM
         WHERE
@@ -113,13 +115,13 @@ def create_tools_tab(notebook, department_var):
         current_result_win["win"] = result_win
         result_win.title("GTIN Search Results")
         result_win.configure(bg="#2b2b2b")
-        result_win.minsize(400, 200)
+        #result_win.minsize(400, 200)
 
         table = tk.Frame(result_win, bg="white", bd=1, relief="solid")
         table.pack(fill="both", expand=True, padx=10, pady=10)
 
         # headers
-        headers = ("Location", "Item", "On Hand Qty", "Logistics Unit", "Select")
+        headers = ("Location", "Item", "On hand qty", "To location", "License plate", "Select")
         for c, h in enumerate(headers):
             lbl = tk.Label(table, text=h, font=("Segoe UI", 10, "bold"),
                            bg="#2b2b2b", fg="white", bd=1, relief="solid", padx=10, pady=2)
@@ -128,7 +130,7 @@ def create_tools_tab(notebook, department_var):
 
         # data rows
         for r, row in enumerate(rows, start=1):
-            for c, val in enumerate(row):
+            for c, val in enumerate(row[:-1]):
                 lbl = tk.Label(table, text=val, font=("Segoe UI", 10),
                                bg="#2b2b2b", fg="white", bd=1, relief="solid", padx=10, pady=2)
                 lbl.grid(row=r, column=c, sticky="nsew")
@@ -138,7 +140,11 @@ def create_tools_tab(notebook, department_var):
 
 
     def _on_select(row, error_var, gtin, result_win):
-        success, msg = select_on_scale(row.LOGISTICS_UNIT, gtin)
+        if row.UM_MATCH:
+            success, msg = select_on_scale(row.LOGISTICS_UNIT, gtin)
+        else:
+            success, msg = select_on_scale(row.LOGISTICS_UNIT, "")
+
         if not success:
             error_var.set(msg)
         # close the results window after a successful (or unsuccessful) select

@@ -181,7 +181,6 @@ def build_ui():
     ttk.Combobox(settings_frame, textvariable=zoom_var, values=ZOOM_OPTIONS, state="readonly").grid(row=1, column=1, sticky="ew", padx=5)
     tk.Checkbutton(settings_frame, text="Dark Mode (Decant)", variable=dark_var, bg="#2b2b2b", fg="white", selectcolor="#2b2b2b").grid(row=2, column=0, columnspan=2, pady=5)
     def on_save_settings():
-        cfg = load_settings()
         save_settings_click(department_var.get(), dark_var.get(), zoom_var.get())
         pass_window_geometry()
         error_var.set("Settings saved")
