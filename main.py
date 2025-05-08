@@ -3,6 +3,10 @@
 import sys
 import os
 import tkinter as tk
+import win32event
+import win32api
+import winerror
+import ctypes
 from tkinter import ttk
 import subprocess
 from browser_control.settings import load_settings, save_settings_click, save_position, resource_path
@@ -47,6 +51,15 @@ ZOOM_OPTIONS = ["150", "200", "250", "300"]
 
 
 def build_ui():
+
+    mutex_name = "BrowserControlMutex"
+    mutex = win32event.CreateMutex(None, False, mutex_name)
+
+    # If the mutex already exists, it means another instance is running
+    if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+        ctypes.windll.user32.MessageBoxW(0, "Browser Control is already running.", "Instance Check", 0x0 | 0x40)
+        sys.exit(0)
+
     cfg = load_settings()
     root = tk.Tk()
 
