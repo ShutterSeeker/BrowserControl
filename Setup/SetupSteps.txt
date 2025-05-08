@@ -22,6 +22,7 @@ It will go here ...repos\BrowserProject\browser_control\.vscode
     ]
 }
 6. Ctrl+Shift+P Reload Window
+7. Compile zoom_control.ahk
 
 EXE creation:
 Open powershell, and run:
