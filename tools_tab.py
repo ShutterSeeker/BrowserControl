@@ -3,6 +3,25 @@ from tkinter import ttk
 import pyodbc
 from browser_control.launcher import select_on_scale 
 
+def show_error_popup(title, message):
+    popup = tk.Toplevel()
+    popup.title(title)
+    popup.configure(bg="#2b2b2b")
+    popup.geometry("600x300")
+
+    lbl = tk.Label(popup, text="Error Details:", bg="#2b2b2b", fg="white", font=("Segoe UI", 10, "bold"))
+    lbl.pack(pady=(10, 0))
+
+    text_box = tk.Text(popup, wrap="word", bg="white", fg="black", font=("Segoe UI", 10))
+    text_box.insert("1.0", message)
+    text_box.config(state="normal")
+    text_box.pack(fill="both", expand=True, padx=10, pady=10)
+
+    text_box.focus()
+    text_box.tag_add("sel", "1.0", "end")  # auto-select all
+
+
+
 def create_tools_tab(notebook, department_var):
     current_result_win = {"win": None}
 
@@ -69,42 +88,46 @@ def create_tools_tab(notebook, department_var):
         server = "JASPRODSQL09"
         database = "ILS"
         driver = "{ODBC Driver 17 for SQL Server}"
-        conn = pyodbc.connect(f"""
-            DRIVER={driver};
-            SERVER={server};
-            DATABASE={database};
-            Trusted_Connection=yes;
-        """.strip())
-        sql = f"""
-        DECLARE @GTIN NVARCHAR(50) = N'{gtin}';
-        DECLARE @LOCATION NVARCHAR(50) = N'{loc}';
+        try:
+            conn = pyodbc.connect(f"""
+                DRIVER={driver};
+                SERVER={server};
+                DATABASE={database};
+                Trusted_Connection=yes;
+            """.strip())
+            sql = f"""
+            DECLARE @GTIN NVARCHAR(50) = ?;
+            DECLARE @LOCATION NVARCHAR(50) = ?;
 
-        SELECT
-            LI.LOCATION,
-            LI.ITEM,
-            ON_HAND_QTY = CONVERT(INT, LI.ON_HAND_QTY),
-            TO_LOC = LI.USER_DEF1,
-            LI.LOGISTICS_UNIT,
-            UM_MATCH = CASE WHEN ICR.QUANTITY_UM = RIGHT(LEFT(LI.USER_DEF1, 7), 2) THEN 1 ELSE 0 END
-        FROM LOCATION_INVENTORY LI
-        INNER JOIN ITEM_CROSS_REFERENCE ICR ON ICR.ITEM = LI.ITEM
-        WHERE
-            ICR.X_REF_ITEM = @GTIN
-            AND LI.TEMPLATE_FIELD1 = N'DECANT'
-            AND LI.ON_HAND_QTY > 0
-        ORDER BY
-            CASE
-                WHEN LI.LOCATION = @LOCATION THEN N'A'
-                WHEN LI.TEMPLATE_FIELD2 = N'WS' THEN N'AB'
-                ELSE LI.LOCATION
-            END;
-        """.strip()
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
+            SELECT
+                LI.LOCATION,
+                LI.ITEM,
+                ON_HAND_QTY = CONVERT(INT, LI.ON_HAND_QTY),
+                TO_LOC = LI.USER_DEF1,
+                LI.LOGISTICS_UNIT,
+                UM_MATCH = CASE WHEN ICR.QUANTITY_UM = RIGHT(LEFT(LI.USER_DEF1, 7), 2) THEN 1 ELSE 0 END
+            FROM LOCATION_INVENTORY LI
+            INNER JOIN ITEM_CROSS_REFERENCE ICR ON ICR.ITEM = LI.ITEM
+            WHERE
+                ICR.X_REF_ITEM = @GTIN
+                AND LI.TEMPLATE_FIELD1 = N'DECANT'
+                AND LI.ON_HAND_QTY > 0
+            ORDER BY
+                CASE
+                    WHEN LI.LOCATION = @LOCATION THEN N'A'
+                    WHEN LI.TEMPLATE_FIELD2 = N'WS' THEN N'AB'
+                    ELSE LI.LOCATION
+                END;
+            """.strip()
+            cursor = conn.cursor()
+            cursor.execute(sql, (gtin, loc))
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            show_error_popup("SQL Error", str(e))
+            return
+        
         if not rows:
             tools_error_var.set("No results")
             return

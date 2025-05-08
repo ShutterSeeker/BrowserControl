@@ -86,20 +86,35 @@ def close_app():
     except: pass
     driver_dc = driver_sc = scale_hwnd = None
 
-def pass_window_geometry():
+def get_window_state(driver):
+    try:
+        title = driver.title
+        for w in gw.getWindowsWithTitle(title):
+            if w.isMinimized:
+                return 'minimized'
+            elif w.isMaximized:
+                return 'maximized'
+            else:
+                return 'normal'
+        return 'minimized'
+    except Exception as e:
+        print(f"[DEBUG] Title {title} Error: {e}")
+        return 'unknown'
+
+def pass_window_geometry(): 
     global driver_dc, driver_sc
-    #print(f"[DEBUG] on_save_settings driver_dc: {driver_dc}, driver_sc: {driver_sc}")
-    # if browsers exist, save their geometry
     if driver_dc and driver_sc:
         dc_pos = driver_dc.get_window_position()
         dc_size = driver_dc.get_window_size()
         sc_pos = driver_sc.get_window_position()
         sc_size = driver_sc.get_window_size()
+        dc_state = get_window_state(driver_dc)
+        sc_state = get_window_state(driver_sc)
         save_window_geometry(
             dc_pos['x'], dc_pos['y'], dc_size['width'], dc_size['height'],
-            sc_pos['x'], sc_pos['y'], sc_size['width'], sc_size['height']
+            sc_pos['x'], sc_pos['y'], sc_size['width'], sc_size['height'],
+            dc_state, sc_state
         )
-        #print(f"[DEBUG] Geometry saved")
 
 def get_profile_path(profile) -> str:
     """
@@ -121,7 +136,6 @@ def launch_app(department_var, dark_mode_var, zoom_var):
     After starting, sets the global `zoom_controller` to control zoom.
     """
     global zoom_controller, scale_hwnd, driver_dc, driver_sc
-    cfg = load_settings()
     stop_event.clear()
 
     def _worker():
@@ -161,8 +175,22 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             
             driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
             driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
+
+            dc_state = cfg.get('dc_state', 'normal').lower()
+            try:
+                for w in gw.getAllWindows():
+                    if (w.left, w.top, w.width, w.height) == (cfg['dc_x'], cfg['dc_y'], cfg['dc_width'], cfg['dc_height']):
+                        if dc_state == 'maximized':
+                            w.maximize()
+                        elif dc_state == 'minimized':
+                            w.minimize()
+                        break
+            except Exception as e:
+                print("Failed to set window state:", e)
+
             #driver_dc.get("https://dc.byjasco.com/LiveMetrics")
             driver_dc.get(cfg['dc_link'])
+            driver_dc.execute_script("document.title = 'DC'")
 
             # Scale window
             service_sc = Service(ChromeDriverManager().install())
@@ -185,7 +213,18 @@ def launch_app(department_var, dark_mode_var, zoom_var):
                     break
             else:
                 print("Could not find Scale window in PyGetWindow")
-            #driver_sc.get("https://scale20.byjasco.com/RF/SignonMenuRF.aspx")
+            
+            sc_state = cfg.get('sc_state', 'normal').lower()
+            try:
+                for w in gw.getAllWindows():
+                    if (w.left, w.top, w.width, w.height) == (cfg['sc_x'], cfg['sc_y'], cfg['sc_width'], cfg['sc_height']):
+                        if sc_state == 'maximized':
+                            w.maximize()
+                        elif sc_state == 'minimized':
+                            w.minimize()
+                        break
+            except Exception as e:
+                print("Failed to set window state:", e)
             driver_sc.get(cfg['sc_link'])
 
             # Attach ZoomControls

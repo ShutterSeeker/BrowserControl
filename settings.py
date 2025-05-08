@@ -58,36 +58,33 @@ def load_settings():
 
 def save_settings(department, darkmode, zoom_var, win_x, win_y,
                   dc_x, dc_y, dc_width, dc_height,
-                  sc_x, sc_y, sc_width, sc_height):
-    """
-    Save all UI settings and window geometry back to the INI file under the Settings section.
-    """
+                  sc_x, sc_y, sc_width, sc_height,
+                  dc_state, sc_state):
     config = configparser.ConfigParser()
     if os.path.exists(CONFIG_FILE):
         config.read(CONFIG_FILE)
     if not config.has_section(SECTION):
         config.add_section(SECTION)
 
-    # write basic settings
     config.set(SECTION, 'department', department)
     config.set(SECTION, 'darkmode', str(darkmode))
     config.set(SECTION, 'zoom_var', zoom_var)
-    # write main window position
     config.set(SECTION, 'win_x', str(win_x))
     config.set(SECTION, 'win_y', str(win_y))
-    # write DC window geometry
     config.set(SECTION, 'dc_x', str(dc_x))
     config.set(SECTION, 'dc_y', str(dc_y))
     config.set(SECTION, 'dc_width', str(dc_width))
     config.set(SECTION, 'dc_height', str(dc_height))
-    # write SC window geometry
     config.set(SECTION, 'sc_x', str(sc_x))
     config.set(SECTION, 'sc_y', str(sc_y))
     config.set(SECTION, 'sc_width', str(sc_width))
     config.set(SECTION, 'sc_height', str(sc_height))
+    config.set(SECTION, 'dc_state', dc_state)
+    config.set(SECTION, 'sc_state', sc_state)
 
     with open(CONFIG_FILE, 'w') as f:
         config.write(f)
+
 
 
 def save_position(x, y):
@@ -102,16 +99,14 @@ def save_position(x, y):
         cfg.get('zoom_var'),
         x, y,
         cfg.getint('dc_x'), cfg.getint('dc_y'), cfg.getint('dc_width'), cfg.getint('dc_height'),
-        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height')
+        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height'),
+        cfg.get('dc_state'), cfg.get('sc_state')
     )
 
 
 def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
-                         sc_x, sc_y, sc_w, sc_h):
-    """
-    Save DC and SC window position & size.
-    """
-    # reuse save_settings to persist geometry changes
+                         sc_x, sc_y, sc_w, sc_h,
+                         dc_state, sc_state):
     cfg = load_settings()
     save_settings(
         cfg.get('department'),
@@ -119,7 +114,8 @@ def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
         cfg.get('zoom_var'),
         cfg.getint('win_x'), cfg.getint('win_y'),
         dc_x, dc_y, dc_w, dc_h,
-        sc_x, sc_y, sc_w, sc_h
+        sc_x, sc_y, sc_w, sc_h,
+        dc_state, sc_state
     )
 
 def save_settings_click(department, darkmode, zoom_var):
@@ -134,5 +130,6 @@ def save_settings_click(department, darkmode, zoom_var):
         zoom_var,
         cfg.getint('win_x'), cfg.getint('win_y'),
         cfg.getint('dc_x'), cfg.getint('dc_y'), cfg.getint('dc_width'), cfg.getint('dc_height'),
-        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height')
+        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height'),
+        cfg.get('dc_state'), cfg.get('sc_state')
     )
