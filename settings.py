@@ -108,6 +108,19 @@ def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
                          sc_x, sc_y, sc_w, sc_h,
                          dc_state, sc_state):
     cfg = load_settings()
+
+    if dc_state != 'normal':
+        dc_x = cfg.getint('dc_x')
+        dc_y = cfg.getint('dc_y')
+        dc_w = cfg.getint('dc_width')
+        dc_h = cfg.getint('dc_height')
+
+    if sc_state != 'normal':
+        sc_x = cfg.getint('sc_x')
+        sc_y = cfg.getint('sc_y')
+        sc_w = cfg.getint('sc_width')
+        sc_h = cfg.getint('sc_height')
+
     save_settings(
         cfg.get('department'),
         cfg.getboolean('darkmode'),
@@ -117,6 +130,7 @@ def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
         sc_x, sc_y, sc_w, sc_h,
         dc_state, sc_state
     )
+
 
 def save_settings_click(department, darkmode, zoom_var):
     """

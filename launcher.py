@@ -86,20 +86,30 @@ def close_app():
     except: pass
     driver_dc = driver_sc = scale_hwnd = None
 
-def get_window_state(driver):
+def get_window_state(driver, exclude_window=None):
     try:
-        title = driver.title
-        for w in gw.getWindowsWithTitle(title):
-            if w.isMinimized:
-                return 'minimized'
-            elif w.isMaximized:
-                return 'maximized'
-            else:
-                return 'normal'
-        return 'minimized'
+        pos = driver.get_window_position()
+        size = driver.get_window_size()
+        target = (pos['x'], pos['y'], size['width'], size['height'])
+
+        for w in gw.getWindowsWithTitle('Google Chrome'):
+            if (w.left, w.top, w.width, w.height) == target:
+                if exclude_window and w == exclude_window:
+                    continue
+                if w.isMinimized:
+                    print(f"[DEBUG] {w} is minimized")
+                    return 'minimized', w
+                elif w.isMaximized:
+                    print(f"[DEBUG] {w} is maximized")
+                    return 'maximized', w
+                else:
+                    print(f"[DEBUG] {w} is normal")
+                    return 'normal', w
+        print(f"[DEBUG] can't find other chrome assumption is minimized")
+        return 'minimized', None  # Fallback
     except Exception as e:
-        print(f"[DEBUG] Title {title} Error: {e}")
-        return 'unknown'
+        print(f"[DEBUG] get_window_state error: {e}")
+        return 'unknown', None
 
 def pass_window_geometry(): 
     global driver_dc, driver_sc
@@ -108,8 +118,10 @@ def pass_window_geometry():
         dc_size = driver_dc.get_window_size()
         sc_pos = driver_sc.get_window_position()
         sc_size = driver_sc.get_window_size()
-        dc_state = get_window_state(driver_dc)
-        sc_state = get_window_state(driver_sc)
+
+        dc_state, dc_win = get_window_state(driver_dc)
+        sc_state, _ = get_window_state(driver_sc, exclude_window=dc_win)
+
         save_window_geometry(
             dc_pos['x'], dc_pos['y'], dc_size['width'], dc_size['height'],
             sc_pos['x'], sc_pos['y'], sc_size['width'], sc_size['height'],
@@ -153,9 +165,11 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             # 3. Tell Chrome to use it
             opts_dc = webdriver.ChromeOptions()
             opts_dc.add_argument(f"--user-data-dir={dc_profile}")
+            opts_dc.add_argument("--log-level=3")
 
             opts_sc = webdriver.ChromeOptions()
             opts_sc.add_argument(f"--user-data-dir={sc_profile}")
+            opts_sc.add_argument("--log-level=3")
 
             sel = department_var.get()
             cfg = load_settings()
@@ -175,22 +189,31 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             
             driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
             driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
-
+            dc_pos = driver_dc.get_window_position()
+            dc_size = driver_dc.get_window_size()
             dc_state = cfg.get('dc_state', 'normal').lower()
-            try:
-                for w in gw.getAllWindows():
-                    if (w.left, w.top, w.width, w.height) == (cfg['dc_x'], cfg['dc_y'], cfg['dc_width'], cfg['dc_height']):
-                        if dc_state == 'maximized':
-                            w.maximize()
-                        elif dc_state == 'minimized':
-                            w.minimize()
-                        break
-            except Exception as e:
-                print("Failed to set window state:", e)
-
-            #driver_dc.get("https://dc.byjasco.com/LiveMetrics")
+            print(f"[DEBUG] dc_state: {dc_state}")
+            #print(f"[DEBUG] Looking for Scale window at {pos}, size {size}")
+            dc_win = None
+            for w in gw.getAllWindows():
+                #print(f"[DEBUG] Saw window {w.title!r} at ({w.left},{w.top}) size {w.width}×{w.height}")
+                if (w.left, w.top, w.width, w.height) == (
+                    dc_pos["x"], dc_pos["y"], dc_size["width"], dc_size["height"]
+                ):
+                    dc_win = w
+                    if dc_state == 'maximized':
+                        print("[DEBUG] dc_driver is being maximized")
+                        w.maximize()
+                    elif dc_state == 'minimized':
+                        print("[DEBUG] dc_driver is being minimized")
+                        w.minimize()
+                    break
+            else:
+                print("Could not find DC window in PyGetWindow")
             driver_dc.get(cfg['dc_link'])
             driver_dc.execute_script("document.title = 'DC'")
+
+            #driver_dc.get("https://dc.byjasco.com/LiveMetrics")
 
             # Scale window
             service_sc = Service(ChromeDriverManager().install())
@@ -200,31 +223,29 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             driver_sc.set_window_position(cfg['sc_x'], cfg['sc_y'])
             driver_sc.set_window_size(cfg['sc_width'], cfg['sc_height'])
             global scale_hwnd
-            pos = driver_sc.get_window_position()
-            size = driver_sc.get_window_size()
+            sc_pos = driver_sc.get_window_position()
+            sc_size = driver_sc.get_window_size()
+            sc_state = cfg.get('sc_state', 'normal').lower()
+            print(f"[DEBUG] sc_state: {sc_state}")
             #print(f"[DEBUG] Looking for Scale window at {pos}, size {size}")
             for w in gw.getAllWindows():
-                #print(f"[DEBUG] Saw window {w.title!r} at ({w.left},{w.top}) size {w.width}×{w.height}")
+                if w == dc_win:
+                    continue
                 if (w.left, w.top, w.width, w.height) == (
-                    pos["x"], pos["y"], size["width"], size["height"]
+                    sc_pos["x"], sc_pos["y"], sc_size["width"], sc_size["height"]
                 ):
                     scale_hwnd = w._hWnd
                     print(f"Scale HWND found: {scale_hwnd}")
+                    if sc_state == 'maximized':
+                        print("[DEBUG] sc_driver is being maximized")
+                        w.maximize()
+                    elif sc_state == 'minimized':
+                        print("[DEBUG] sc_driver is being minimized")
+                        w.minimize()
                     break
             else:
                 print("Could not find Scale window in PyGetWindow")
             
-            sc_state = cfg.get('sc_state', 'normal').lower()
-            try:
-                for w in gw.getAllWindows():
-                    if (w.left, w.top, w.width, w.height) == (cfg['sc_x'], cfg['sc_y'], cfg['sc_width'], cfg['sc_height']):
-                        if sc_state == 'maximized':
-                            w.maximize()
-                        elif sc_state == 'minimized':
-                            w.minimize()
-                        break
-            except Exception as e:
-                print("Failed to set window state:", e)
             driver_sc.get(cfg['sc_link'])
 
             # Attach ZoomControls
