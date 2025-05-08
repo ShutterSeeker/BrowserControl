@@ -1,8 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import pyodbc
-from browser_control.launcher import select_on_scale
-
+from browser_control.launcher import select_on_scale 
 
 def create_tools_tab(notebook, department_var):
     current_result_win = {"win": None}

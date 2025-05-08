@@ -9,4 +9,4 @@ zoom_control.exe
 .vscode/
 
 # Chrome profile data
-browser_control/profiles/
+profiles/

@@ -1,7 +1,5 @@
 # browser_control/zoom_controls.py
 
-#import browser_control.launcher as launcher
-
 class ZoomControls:
     """
     Encapsulates both the UI buttons and the zoom logic for Scale RF pages.

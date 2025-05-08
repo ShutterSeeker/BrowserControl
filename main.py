@@ -8,7 +8,6 @@ import subprocess
 from browser_control.settings import load_settings, save_settings_click, save_position, resource_path
 from browser_control.launcher import launch_app, close_app, pass_window_geometry
 import browser_control.launcher as launcher
-from browser_control.zoom_controls import ZoomControls
 from browser_control.tools_tab import create_tools_tab
 
 def get_exe_path():

@@ -1,0 +1,28 @@
+BrowserControl Setup
+1. In VS code Ctrl+Shift+P Git Clone https://github.com/ShutterSeeker/BrowserControl.git
+2. Select folder ...repos\BrowserProject
+	2a. Change ...repos\BrowserProject\BrowserControl to browser_control
+3. Move setup.py to BrowserProject
+4. In python terminal run: cd C:\Users\bbecker\source\repos\BrowserProject; pip install -e .
+5. Create a launch.json (the play button on the left panel)
+It will go here ...repos\BrowserProject\browser_control\.vscode
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Run BrowserControl",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "browser_control.main",
+        "cwd": "${workspaceFolder}",
+        "env": { "PYTHONPATH": "${workspaceFolder}" },
+        "console": "integratedTerminal",
+        "justMyCode": true
+      }
+    ]
+}
+6. Ctrl+Shift+P Reload Window
+
+EXE creation:
+Open powershell, and run:
+cd C:\Users\bbecker\source\repos\BrowserProject; python -m PyInstaller --name BrowserControl --onedir --windowed --icon "C:\Users\bbecker\source\repos\BrowserProject\browser_control\manh.ico" browser_control\main.py
