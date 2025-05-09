@@ -10,3 +10,8 @@ zoom_control.exe
 
 # Chrome profile data
 profiles/
+
+# backend
+backend/build
+backend/dist
+backend/BackendAPI.spec
