@@ -228,12 +228,9 @@ def build_ui():
         icon.menu = pystray.Menu(
             item("Quit", on_quit)
         )
-        icon.run()
+        icon.run_detached()
 
-    # Launch tray icon in its own thread
-    tray_thread = threading.Thread(target=run_tray, daemon=True)
-    tray_thread.start()
-
+    run_tray()
     # Then start the mainloop
     root.mainloop()
 
