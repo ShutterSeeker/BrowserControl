@@ -18,6 +18,8 @@ import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
 
+tray_icon = None
+
 def get_path(file):
     # if frozen (running as EXE), look next to the EXE
     if getattr(sys, "frozen", False):
@@ -82,6 +84,7 @@ def build_ui():
 
     def on_close_window():
         save_position(root.winfo_x(), root.winfo_y())
+        stop_tray()
         root.destroy()
 
     def minimize_window():
@@ -206,7 +209,8 @@ def build_ui():
 
     create_tools_tab(notebook, department_var)
 
-    def create_icon():
+    
+    def create_icon_image():
         # Try loading your actual .ico
         try:
             icon_path = get_path("manh.ico")
@@ -218,17 +222,25 @@ def build_ui():
             d.rectangle([16, 16, 48, 48], fill="white")
             return image
 
-    def on_quit(icon, item):
-        icon.stop()
+    def on_quit(tray_icon, item):
+        tray_icon.stop()
         root.quit()
 
     def run_tray():
-        icon = pystray.Icon("BrowserControl", icon=create_icon())
-        icon.title = "Browser Control"
-        icon.menu = pystray.Menu(
-            item("Quit", on_quit)
+        global tray_icon
+        tray_icon = pystray.Icon(
+            "BrowserControl",
+            create_icon_image(),
+            "Browser Control",
+            menu=pystray.Menu(
+                pystray.MenuItem("Quit", on_quit)
+            )
         )
-        icon.run_detached()
+        tray_icon.run_detached()
+
+    def stop_tray():
+        if tray_icon:
+            tray_icon.stop()
 
     run_tray()
     # Then start the mainloop
