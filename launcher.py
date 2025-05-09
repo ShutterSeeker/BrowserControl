@@ -149,7 +149,8 @@ def launch_app(department_var, dark_mode_var, zoom_var):
     """
     global zoom_controller, scale_hwnd, driver_dc, driver_sc
     stop_event.clear()
-
+    cfg = load_settings()
+    
     def _worker():
         #global driver_sc
         global zoom_controller, scale_hwnd, driver_dc, driver_sc
@@ -172,7 +173,7 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             opts_sc.add_argument("--log-level=3")
 
             sel = department_var.get()
-            cfg = load_settings()
+            
             
             # create/prepare profiles & bookmarks
             generate_bookmarks(sel)
