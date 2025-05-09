@@ -13,20 +13,24 @@ from browser_control.settings import load_settings, save_settings_click, save_po
 from browser_control.launcher import launch_app, close_app, pass_window_geometry
 import browser_control.launcher as launcher
 from browser_control.tools_tab import create_tools_tab
+import threading
+import pystray
+from pystray import MenuItem as item
+from PIL import Image, ImageDraw
 
-def get_exe_path():
+def get_path(file):
     # if frozen (running as EXE), look next to the EXE
     if getattr(sys, "frozen", False):
-        return os.path.join(os.path.dirname(sys.executable), "zoom_control.exe")
+        return os.path.join(os.path.dirname(sys.executable), file)
     # else (running from source), load the one in browser_control/
-    return resource_path("zoom_control.exe")
+    return resource_path(file)
 
 # Helper to run AHK zoom control
 def run_ahk_zoom(percent: str) -> str:
     hwnd = launcher.scale_hwnd
     if not hwnd:
         return "Scale window not found"
-    exe_path = get_exe_path()
+    exe_path = get_path("zoom_control.exe")
     if not os.path.isfile(exe_path):
         return "Zoom control executable not found"
     loops_map = {"100":2, "150":3, "200":5, "250":6, "300":7}
@@ -202,9 +206,36 @@ def build_ui():
 
     create_tools_tab(notebook, department_var)
 
+    def create_icon():
+        # Try loading your actual .ico
+        try:
+            icon_path = get_path("manh.ico")
+            return Image.open(icon_path)
+        except:
+            # fallback: draw a simple white square icon
+            image = Image.new("RGB", (64, 64), "black")
+            d = ImageDraw.Draw(image)
+            d.rectangle([16, 16, 48, 48], fill="white")
+            return image
+
+    def on_quit(icon, item):
+        icon.stop()
+        root.quit()
+
+    def run_tray():
+        icon = pystray.Icon("BrowserControl", icon=create_icon())
+        icon.title = "Browser Control"
+        icon.menu = pystray.Menu(
+            item("Quit", on_quit)
+        )
+        icon.run()
+
+    # Launch tray icon in its own thread
+    tray_thread = threading.Thread(target=run_tray, daemon=True)
+    tray_thread.start()
+
+    # Then start the mainloop
     root.mainloop()
 
-
 if __name__ == "__main__":
-    print("build_ui() launching…")
     build_ui()

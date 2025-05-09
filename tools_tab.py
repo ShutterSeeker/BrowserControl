@@ -84,50 +84,24 @@ def create_tools_tab(notebook, department_var):
         for w in results_frame.winfo_children():
             w.destroy()
 
-        # Query database
-        server = "JASPRODSQL09"
-        database = "ILS"
-        driver = "{ODBC Driver 17 for SQL Server}"
+        import requests
         try:
-            conn = pyodbc.connect(f"""
-                DRIVER={driver};
-                SERVER={server};
-                DATABASE={database};
-                Trusted_Connection=yes;
-            """.strip())
-            sql = f"""
-            DECLARE @GTIN NVARCHAR(50) = ?;
-            DECLARE @LOCATION NVARCHAR(50) = ?;
-
-            SELECT
-                LI.LOCATION,
-                LI.ITEM,
-                ON_HAND_QTY = CONVERT(INT, LI.ON_HAND_QTY),
-                TO_LOC = LI.USER_DEF1,
-                LI.LOGISTICS_UNIT,
-                UM_MATCH = CASE WHEN ICR.QUANTITY_UM = RIGHT(LEFT(LI.USER_DEF1, 7), 2) THEN 1 ELSE 0 END
-            FROM LOCATION_INVENTORY LI
-            INNER JOIN ITEM_CROSS_REFERENCE ICR ON ICR.ITEM = LI.ITEM
-            WHERE
-                ICR.X_REF_ITEM = @GTIN
-                AND LI.TEMPLATE_FIELD1 = N'DECANT'
-                AND LI.ON_HAND_QTY > 0
-            ORDER BY
-                CASE
-                    WHEN LI.LOCATION = @LOCATION THEN N'A'
-                    WHEN LI.TEMPLATE_FIELD2 = N'WS' THEN N'AB'
-                    ELSE LI.LOCATION
-                END;
-            """.strip()
-            cursor = conn.cursor()
-            cursor.execute(sql, (gtin, loc))
-            rows = cursor.fetchall()
-            cursor.close()
-            conn.close()
-        except Exception as e:
-            show_error_popup("SQL Error", str(e))
+            resp = requests.post("http://10.110.7.120:5000/lookup_lp_by_gtin", json={
+                "gtin": gtin,
+                "department": loc
+            }, timeout=5)
+            resp.raise_for_status()
+            rows = resp.json()
+        except requests.exceptions.ConnectionError:
+            tools_error_var.set("Backend is not running")
             return
-        
+        except requests.exceptions.Timeout:
+            tools_error_var.set("Backend request timed out")
+            return
+        except Exception as e:
+            tools_error_var.set(f"Error: {e}")
+            return
+                
         if not rows:
             tools_error_var.set("No results")
             return
@@ -152,20 +126,28 @@ def create_tools_tab(notebook, department_var):
 
         # data rows
         for r, row in enumerate(rows, start=1):
-            for c, val in enumerate(row[:-1]):
+            values = (
+                row.get("LOCATION", ""),
+                row.get("ITEM", ""),
+                row.get("ON_HAND_QTY", ""),
+                row.get("TO_LOC", ""),
+                row.get("LOGISTICS_UNIT", "")
+            )
+            for c, val in enumerate(values):
                 lbl = tk.Label(table, text=val, font=("Segoe UI", 10),
-                               bg="#2b2b2b", fg="white", bd=1, relief="solid", padx=10, pady=2)
+                            bg="#2b2b2b", fg="white", bd=1, relief="solid", padx=10, pady=2)
                 lbl.grid(row=r, column=c, sticky="nsew")
             btn = ttk.Button(table, text="Select",
-                             command=lambda rw=row, win=result_win: _on_select(rw, tools_error_var, gtin_var.get(), win))
+                            command=lambda rw=row, win=result_win: _on_select(rw, tools_error_var, gtin_var.get(), win))
             btn.grid(row=r, column=len(headers)-1, sticky="nsew")
 
 
+
     def _on_select(row, error_var, gtin, result_win):
-        if row.UM_MATCH:
-            success, msg = select_on_scale(row.LOGISTICS_UNIT, gtin)
+        if row.get("UM_MATCH", 0):
+            success, msg = select_on_scale(row["LOGISTICS_UNIT"], gtin)
         else:
-            success, msg = select_on_scale(row.LOGISTICS_UNIT, "")
+            success, msg = select_on_scale(row["LOGISTICS_UNIT"], "")
 
         if not success:
             error_var.set(msg)
