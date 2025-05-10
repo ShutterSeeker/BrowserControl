@@ -182,15 +182,16 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             service_dc = Service(ChromeDriverManager().install())
             opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
             opts_dc.add_experimental_option("useAutomationExtension", False)
+            print("[DEBUG] Starting DC window")
             try:
                 driver_dc  = webdriver.Chrome(service=service_dc, options=opts_dc)
             except Exception as e:
-                print("Failed to start chrome:", e)
+                print("Failed to start DC window:", e)
                 return
             
             driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
             driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
-            time.Sleep(0.1)
+            time.sleep(0.1)
             dc_pos = driver_dc.get_window_position()
             dc_size = driver_dc.get_window_size()
             dc_state = cfg.get('dc_state', 'normal').lower()
@@ -212,7 +213,7 @@ def launch_app(department_var, dark_mode_var, zoom_var):
                         w.minimize()
                     break
             else:
-                print("Could not find DC window in PyGetWindow")
+                print("[ERROR] Could not find DC window in PyGetWindow")
             driver_dc.get(cfg['dc_link'])
             driver_dc.execute_script("document.title = 'DC'")
 
@@ -220,17 +221,22 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             service_sc = Service(ChromeDriverManager().install())
             opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
             opts_sc.add_experimental_option("useAutomationExtension", False)
-            driver_sc  = webdriver.Chrome(service=service_sc, options=opts_sc)
+            print("[DEBUG] Starting Scale window")
+            try:
+                driver_sc  = webdriver.Chrome(service=service_sc, options=opts_sc)
+            except Exception as e:
+                print("Failed to start Scale window:", e)
+                return
             driver_sc.set_window_position(cfg['sc_x'], cfg['sc_y'])
             driver_sc.set_window_size(cfg['sc_width'], cfg['sc_height'])
-            time.Sleep(0.1)
+            time.sleep(0.1)
             global scale_hwnd
             sc_pos = driver_sc.get_window_position()
             sc_size = driver_sc.get_window_size()
             sc_state = cfg.get('sc_state', 'normal').lower()
             print(f"[DEBUG] sc_state: {sc_state}")
             print(f"[DEBUG] Looking for Scale window at {sc_pos}, size {sc_size}")
-            for w in gw.getAllWindows():
+            for w in gw.getWindowsWithTitle('Google Chrome'):
                 print(f"[DEBUG] Saw window {w.title!r} at ({w.left},{w.top}) size {w.width}×{w.height}")
                 if w == dc_win:
                     print(f"[DEBUG] Skipping dc_win")
