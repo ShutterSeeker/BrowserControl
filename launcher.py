@@ -190,18 +190,20 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             
             driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
             driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
+            time.Sleep(0.1)
             dc_pos = driver_dc.get_window_position()
             dc_size = driver_dc.get_window_size()
             dc_state = cfg.get('dc_state', 'normal').lower()
             print(f"[DEBUG] dc_state: {dc_state}")
-            #print(f"[DEBUG] Looking for Scale window at {pos}, size {size}")
+            print(f"[DEBUG] Looking for DC window at {dc_pos}, size {dc_size}")
             dc_win = None
-            for w in gw.getAllWindows():
-                #print(f"[DEBUG] Saw window {w.title!r} at ({w.left},{w.top}) size {w.width}×{w.height}")
+            for w in gw.getWindowsWithTitle('Google Chrome'):
+                print(f"[DEBUG] Saw window {w.title!r} at ({w.left},{w.top}) size {w.width}×{w.height}")
                 if (w.left, w.top, w.width, w.height) == (
                     dc_pos["x"], dc_pos["y"], dc_size["width"], dc_size["height"]
                 ):
                     dc_win = w
+                    print(f"[DEBUG] dc_win: {dc_win}")
                     if dc_state == 'maximized':
                         print("[DEBUG] dc_driver is being maximized")
                         w.maximize()
@@ -214,8 +216,6 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             driver_dc.get(cfg['dc_link'])
             driver_dc.execute_script("document.title = 'DC'")
 
-            #driver_dc.get("https://dc.byjasco.com/LiveMetrics")
-
             # Scale window
             service_sc = Service(ChromeDriverManager().install())
             opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -223,20 +223,23 @@ def launch_app(department_var, dark_mode_var, zoom_var):
             driver_sc  = webdriver.Chrome(service=service_sc, options=opts_sc)
             driver_sc.set_window_position(cfg['sc_x'], cfg['sc_y'])
             driver_sc.set_window_size(cfg['sc_width'], cfg['sc_height'])
+            time.Sleep(0.1)
             global scale_hwnd
             sc_pos = driver_sc.get_window_position()
             sc_size = driver_sc.get_window_size()
             sc_state = cfg.get('sc_state', 'normal').lower()
             print(f"[DEBUG] sc_state: {sc_state}")
-            #print(f"[DEBUG] Looking for Scale window at {pos}, size {size}")
+            print(f"[DEBUG] Looking for Scale window at {sc_pos}, size {sc_size}")
             for w in gw.getAllWindows():
+                print(f"[DEBUG] Saw window {w.title!r} at ({w.left},{w.top}) size {w.width}×{w.height}")
                 if w == dc_win:
+                    print(f"[DEBUG] Skipping dc_win")
                     continue
                 if (w.left, w.top, w.width, w.height) == (
                     sc_pos["x"], sc_pos["y"], sc_size["width"], sc_size["height"]
                 ):
                     scale_hwnd = w._hWnd
-                    print(f"Scale HWND found: {scale_hwnd}")
+                    print(f"[DEBUG] Scale HWND found: {scale_hwnd}")
                     if sc_state == 'maximized':
                         print("[DEBUG] sc_driver is being maximized")
                         w.maximize()
