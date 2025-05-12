@@ -13,6 +13,10 @@ from browser_control.settings import load_settings, save_settings_click, save_po
 from browser_control.launcher import launch_app, close_app, pass_window_geometry
 import browser_control.launcher as launcher
 from browser_control.tools_tab import create_tools_tab
+import pystray
+from PIL import Image, ImageDraw
+import threading
+
 
 def get_path(file):
     # if frozen (running as EXE), look next to the EXE
@@ -61,7 +65,37 @@ def build_ui():
         sys.exit(0)
 
     cfg = load_settings()
+
+    tray_icon = None
+
+    def create_image():
+        icon_path = get_path("manh.ico")
+        try:
+            return Image.open(icon_path)
+        except Exception as e:
+            print(f"[WARN] Failed to load icon: {e}")
+            # fallback: simple circle
+            image = Image.new("RGB", (64, 64), "black")
+            draw = ImageDraw.Draw(image)
+            draw.ellipse((16, 16, 48, 48), fill="white")
+            return image
+
+    def on_quit_tray(icon, item):
+        icon.stop()
+        root.quit()
+
+    def setup_tray():
+        nonlocal tray_icon
+        tray_icon = pystray.Icon(
+            "Browser Control",
+            create_image(),
+            menu=pystray.Menu(pystray.MenuItem("Quit", on_quit_tray))
+        )
+        threading.Thread(target=tray_icon.run, daemon=True).start()
+
+    
     root = tk.Tk()
+    setup_tray()
 
     # Style for dark-themed tabs and buttons
     style = ttk.Style()
@@ -78,6 +112,8 @@ def build_ui():
 
     def on_close_window():
         save_position(root.winfo_x(), root.winfo_y())
+        if tray_icon:
+            tray_icon.stop()
         root.destroy()
 
     def minimize_window():
