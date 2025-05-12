@@ -257,7 +257,7 @@ def launch_app(department_var, dark_mode_var, zoom_var):
                 print("No Continue button appeared — maybe already on menu.")
 
             WebDriverWait(driver_sc, 10).until(
-                lambda d: d.current_url == "https://scale20.byjasco.com/RF/SignonMenuRF.aspx"
+                lambda d: d.current_url.startswith("https://scale20.byjasco.com/RF/SignonMenuRF.aspx")
             )
 
             if sel.startswith("DECANT.WS"):
