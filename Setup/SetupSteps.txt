@@ -28,10 +28,11 @@ EXE creation:
 Open powershell, and run:
 
 Backend
-cd C:\Users\bbecker\source\repos\BrowserProject\backend; python -m PyInstaller --name BackendAPI --onefile app.py --windowed
+cd C:\Users\bbecker\source\repos\BrowserProject\browser_control\backend; python -m PyInstaller --name BrowserControlAPI --icon "jasco.ico" --onefile app.py --windowed;xcopy /Y /Q jasco.ico dist\
+cd C:\Users\bbecker\source\repos\BrowserProject\browser_control\backend; python -m PyInstaller --name BrowserControlAPI --icon "jasco.ico" --onefile app.py;xcopy /Y /Q jasco.ico dist\
 
 Debug
 cd "C:\Users\blake\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --name BrowserControlDebug --icon "browser_control\manh.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\debug\;xcopy /Y /Q browser_control\zoom_control.exe dist\debug\;xcopy /Y /Q dist\BrowserControlDebug.exe dist\debug\
 
 Run
-cd "C:\Users\bbecker\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --windowed --name BrowserControl --icon "browser_control\manh.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\run\;xcopy /Y /Q browser_control\zoom_control.exe dist\run\;xcopy /Y /Q dist\BrowserControl.exe dist\run\;xcopy /Y /Q browser_control\manh.ico dist\run\
+cd "C:\Users\bbecker\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --windowed --name BrowserControl --icon "browser_control\jasco.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\BrowserControl\;xcopy /Y /Q browser_control\zoom_control.exe dist\BrowserControl\;xcopy /Y /Q dist\BrowserControl.exe dist\BrowserControl\;xcopy /Y /Q browser_control\jasco.ico dist\BrowserControl\

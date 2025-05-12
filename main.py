@@ -17,7 +17,6 @@ import pystray
 from PIL import Image, ImageDraw
 import threading
 
-
 def get_path(file):
     # if frozen (running as EXE), look next to the EXE
     if getattr(sys, "frozen", False):
@@ -69,7 +68,7 @@ def build_ui():
     tray_icon = None
 
     def create_image():
-        icon_path = get_path("manh.ico")
+        icon_path = get_path("jasco.ico")
         try:
             return Image.open(icon_path)
         except Exception as e:
@@ -138,7 +137,11 @@ def build_ui():
     # Title bar
     title_bar = tk.Frame(root, bg="#1f1f1f", height=30)
     title_bar.pack(fill=tk.X)
-    tk.Label(title_bar, text="Browser Control", bg="#1f1f1f", fg="white").pack(side=tk.LEFT, padx=5)
+    title_label = tk.Label(title_bar, text="Browser Control v1.2.1", bg="#1f1f1f", fg="white")
+    title_label.pack(side=tk.LEFT, padx=5)
+    title_label.bind("<ButtonPress-1>", lambda e: setattr(root, '_drag', (e.x, e.y)))
+    title_label.bind("<B1-Motion>", lambda e: root.geometry(f"+{root.winfo_x() + e.x - root._drag[0]}+{root.winfo_y() + e.y - root._drag[1]}"))
+
     close_btn = tk.Button(title_bar, text="✕", font=("Segoe UI", 14), command=on_close_window, bg="#1f1f1f", fg="white", bd=0, padx=5)
     close_btn.pack(side=tk.RIGHT)
     close_btn.bind("<Enter>", lambda e: close_btn.config(bg="red"))
@@ -189,6 +192,16 @@ def build_ui():
             launch_btn.state(['!disabled'])
         else:
             root.after(200, check_ready)
+            
+    def on_department_change(*args):
+        # Remove the old Tools tab if it exists
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Tools":
+                notebook.forget(i)
+                break
+        create_tools_tab(notebook, department_var)
+
+    department_var.trace_add("write", on_department_change)
 
     # HOME: center labels across 3 columns
     for i in range(3): home_frame.columnconfigure(i, weight=1)
