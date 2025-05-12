@@ -26,12 +26,12 @@ It will go here ...repos\BrowserProject\browser_control\.vscode
 
 EXE creation:
 Open powershell, and run:
-cd C:\Users\bbecker\source\repos\BrowserProject; python -m PyInstaller --name BrowserControl --onedir --windowed --icon "C:\Users\bbecker\source\repos\BrowserProject\browser_control\manh.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\BrowserControl\;xcopy /Y /Q browser_control\zoom_control.exe dist\BrowserControl\;xcopy /Y /Q browser_control\manh.ico dist\BrowserControl\
-
-cd "C:\Users\bbecker\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --name BrowserControl --icon "browser_control\manh.ico" --add-data "browser_control\settings.ini;." browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\;xcopy /Y /Q browser_control\zoom_control.exe dist\;xcopy /Y /Q browser_control\manh.ico dist\
 
 Backend
 cd C:\Users\bbecker\source\repos\BrowserProject\backend; python -m PyInstaller --name BackendAPI --onefile app.py --windowed
 
 Debug
 cd "C:\Users\blake\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --name BrowserControlDebug --icon "browser_control\manh.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\debug\;xcopy /Y /Q browser_control\zoom_control.exe dist\debug\;xcopy /Y /Q dist\BrowserControlDebug.exe dist\debug\
+
+Run
+cd "C:\Users\bbecker\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --windowed --name BrowserControl --icon "browser_control\manh.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\run\;xcopy /Y /Q browser_control\zoom_control.exe dist\run\;xcopy /Y /Q dist\BrowserControl.exe dist\run\;xcopy /Y /Q browser_control\manh.ico dist\run\

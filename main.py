@@ -89,6 +89,7 @@ def build_ui():
         tray_icon = pystray.Icon(
             "Browser Control",
             create_image(),
+            title="Browser Control",
             menu=pystray.Menu(pystray.MenuItem("Quit", on_quit_tray))
         )
         threading.Thread(target=tray_icon.run, daemon=True).start()
