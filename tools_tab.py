@@ -34,7 +34,7 @@ def create_tools_tab(notebook, department_var):
         tools_frame.columnconfigure(c, weight=1)
 
     tools_error_var = tk.StringVar()
-    tools_error_var.set("Mark pallets as arrived" if loc.lower().startswith("palletizingstation") else "Pallet LP lookup by GTIN")
+    tools_error_var.set("Mark tote as arrived" if loc.lower().startswith("palletizingstation") else "Pallet LP lookup by GTIN")
     tk.Label(tools_frame, textvariable=tools_error_var, bg="#2b2b2b", fg="white", font=("Segoe UI", 10)).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(5,15))
 
     entry_label_text = "Tote:" if loc.lower().startswith("palletizingstation") else "GTIN:"

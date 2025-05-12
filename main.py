@@ -17,6 +17,8 @@ import pystray
 from PIL import Image, ImageDraw
 import threading
 
+VERSION = "1.2.1"
+
 def get_path(file):
     # if frozen (running as EXE), look next to the EXE
     if getattr(sys, "frozen", False):
@@ -137,7 +139,7 @@ def build_ui():
     # Title bar
     title_bar = tk.Frame(root, bg="#1f1f1f", height=30)
     title_bar.pack(fill=tk.X)
-    title_label = tk.Label(title_bar, text="Browser Control v1.2.1", bg="#1f1f1f", fg="white")
+    title_label = tk.Label(title_bar, text=f"Browser Control v{VERSION}", bg="#1f1f1f", fg="white")
     title_label.pack(side=tk.LEFT, padx=5)
     title_label.bind("<ButtonPress-1>", lambda e: setattr(root, '_drag', (e.x, e.y)))
     title_label.bind("<B1-Motion>", lambda e: root.geometry(f"+{root.winfo_x() + e.x - root._drag[0]}+{root.winfo_y() + e.y - root._drag[1]}"))
