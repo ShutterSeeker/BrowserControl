@@ -68,7 +68,7 @@ def select_pallet_arrived_by_tote():
         """)
 
         cursor = conn.cursor()
-        cursor.execute("EXEC usp_SelectPalletArrivedByTote ?", (tote,)) # Comma needed to send as datatype tuple
+        cursor.execute("EXEC usp_BrowserControlArrive ?", (tote,)) # Comma needed to send as datatype tuple
         row = cursor.fetchone()
         columns = [desc[0] for desc in cursor.description]
         result = dict(zip(columns, row))

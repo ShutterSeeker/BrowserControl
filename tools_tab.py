@@ -1,6 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
-from browser_control.launcher import select_on_scale 
+from browser_control.launcher import select_on_scale
+import requests
+
+IP = "10.110.2.145"
+PORT = "5000"
 
 def show_error_popup(title, message):
     popup = tk.Toplevel()
@@ -34,13 +38,24 @@ def create_tools_tab(notebook, department_var):
         tools_frame.columnconfigure(c, weight=1)
 
     tools_error_var = tk.StringVar()
-    tools_error_var.set("Mark tote as arrived" if loc.lower().startswith("palletizingstation") else "Pallet LP lookup by GTIN")
-    tk.Label(tools_frame, textvariable=tools_error_var, bg="#2b2b2b", fg="white", font=("Segoe UI", 10)).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(5,15))
+    tools_error_var.set("Mark totes as arrived" if loc.lower().startswith("palletizingstation") else "Pallet LP lookup by GTIN")
+    error_lbl = tk.Label(
+        tools_frame,
+        textvariable=tools_error_var,
+        bg="#2b2b2b",
+        fg="white",
+        font=("Segoe UI", 10),
+        wraplength=200,
+        justify="center"
+    )
+    error_lbl.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(5,15))
 
     entry_label_text = "Tote:" if loc.lower().startswith("palletizingstation") else "GTIN:"
     entry_var = tk.StringVar()
-    tk.Label(tools_frame, text=entry_label_text, bg="#2b2b2b", fg="white", font=("Segoe UI", 10)).grid(row=1, column=0, sticky="e")
-    ttk.Entry(tools_frame, textvariable=entry_var, font=("Segoe UI", 10)).grid(row=1, column=1, columnspan=2, sticky="ew", padx=5)
+    input_label = tk.Label(tools_frame, text=entry_label_text, bg="#2b2b2b", fg="white", font=("Segoe UI", 10))
+    input_label.grid(row=1, column=0, sticky="e")
+    input_entry = ttk.Entry(tools_frame, textvariable=entry_var, font=("Segoe UI", 10))
+    input_entry.grid(row=1, column=1, columnspan=2, sticky="ew", padx=5)
 
     RESULTS_ROW = 4
     results_frame = tk.Frame(tools_frame, bg="#2b2b2b")
@@ -48,29 +63,59 @@ def create_tools_tab(notebook, department_var):
     tools_frame.rowconfigure(RESULTS_ROW, weight=1)
 
     def rebuild_tab():
-        notebook.forget(tools_frame)
-        create_tools_tab(notebook, department_var)
+        # Remove old Tools tab
+        for i in range(notebook.index("end")):
+            if notebook.tab(i, "text") == "Tools":
+                notebook.forget(i)
+                break
+        # Recreate and grab updated variable
+        global current_tools_error_var
+        _, current_tools_error_var = create_tools_tab(notebook, department_var)
 
-    def on_confirm(container_id):
-        import requests
-        try:
-            resp = requests.post("http://10.110.7.120:5000/update_pallet_arrived_by_tote", json={"PARENT_CONTAINER_ID": container_id}, timeout=5)
-            resp.raise_for_status()
-            tools_error_var.set("Marked as arrived successfully.")
-        except Exception as e:
-            tools_error_var.set(f"Error confirming: {e}")
 
     def show_confirmation(totes, container_id):
-        for w in results_frame.winfo_children():
-            w.destroy()
+    # Clear search input section (label, entry, button)
+        for widget in [input_label, input_entry, search_btn]:
+            widget.grid_remove()
 
-        msg = f"You are about to mark {totes} as arrived. Do you wish to proceed?"
-        tk.Label(results_frame, text=msg, bg="#2b2b2b", fg="white", font=("Segoe UI", 10)).pack(pady=10)
-        btn_frame = tk.Frame(results_frame, bg="#2b2b2b")
-        btn_frame.pack()
+        # Use the existing error_var to display the confirmation text
+        tools_error_var.set(f"You are about to mark {totes} totes as arrived. Do you wish to proceed?")
 
-        ttk.Button(btn_frame, text="Confirm", command=lambda: on_confirm(container_id)).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=rebuild_tab).pack(side=tk.LEFT, padx=5)
+        # Add confirm/cancel buttons
+        btn_frame = tk.Frame(tools_frame, bg="#2b2b2b")
+        btn_frame.grid(row=1, column=0, columnspan=3, pady=10)
+
+        def on_confirm():
+            try:
+                resp = requests.post(f"http://{IP}:{PORT}/update_pallet_arrived_by_tote", json={"PARENT_CONTAINER_ID": container_id}, timeout=5)
+                resp.raise_for_status()
+                
+                rebuild_tab()
+
+                # Switch back to the Tools tab
+                for i in range(notebook.index("end")):
+                    if notebook.tab(i, "text") == "Tools":
+                        notebook.select(i)
+                        break
+
+                current_tools_error_var.set("Marked as arrived successfully!")
+            except Exception as e:
+                current_tools_error_var.set(f"Error confirming: {e}")
+            finally:
+                btn_frame.destroy()
+
+        def on_cancel():
+            rebuild_tab()
+
+            # Switch back to the Tools tab
+            for i in range(notebook.index("end")):
+                if notebook.tab(i, "text") == "Tools":
+                    notebook.select(i)
+                    break
+
+
+        ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Confirm", command=on_confirm, style="Danger.TButton").pack(side=tk.LEFT, padx=5)
 
     def on_search():
         for w in results_frame.winfo_children():
@@ -81,9 +126,8 @@ def create_tools_tab(notebook, department_var):
             return
 
         if loc.lower().startswith("palletizingstation"):
-            import requests
             try:
-                resp = requests.post("http://10.110.7.120:5000/select_pallet_arrived_by_tote", json={"tote": val}, timeout=5)
+                resp = requests.post(f"http://{IP}:{PORT}/select_pallet_arrived_by_tote", json={"tote": val}, timeout=5)
                 data = resp.json()
 
                 if resp.status_code != 200:
@@ -92,11 +136,17 @@ def create_tools_tab(notebook, department_var):
                     return
 
                 msg = data.get("MSG", "")
+                totes = data["TOTES_IN_TRANSIT"]
+                cid = data["PARENT_CONTAINER_ID"]
                 if msg:
                     tools_error_var.set(msg)
                     return
+
+                if totes == 0:
+                    tools_error_var.set(f"There are no totes to mark as arrived on pallet {cid}.")
+                    return
                 
-                show_confirmation(data["TOTES_IN_TRANSIT"], data["PARENT_CONTAINER_ID"])
+                show_confirmation(totes, cid)
 
             except requests.exceptions.ConnectionError:
                 tools_error_var.set("Backend is not running")
@@ -106,9 +156,8 @@ def create_tools_tab(notebook, department_var):
                 show_error_popup("Exception", str(e))
 
         else:  # DECANT.WS logic (unchanged)
-            import requests
             try:
-                resp = requests.post("http://10.110.7.120:5000/lookup_lp_by_gtin", json={"gtin": val, "department": loc}, timeout=5)
+                resp = requests.post(f"http://{IP}:{PORT}/lookup_lp_by_gtin", json={"gtin": val, "department": loc}, timeout=5)
                 resp.raise_for_status()
                 rows = resp.json()
             except Exception as e:
@@ -137,7 +186,6 @@ def create_tools_tab(notebook, department_var):
                 ttk.Button(table, text="Select", command=lambda rw=row, win=result_win: _on_select(rw, tools_error_var, entry_var.get(), win)).grid(row=r, column=5, sticky="nsew")
 
     def _on_select(row, error_var, gtin, result_win):
-        from browser_control.launcher import select_on_scale
         if row.get("UM_MATCH", 0):
             success, msg = select_on_scale(row["LOGISTICS_UNIT"], gtin)
         else:
@@ -148,6 +196,7 @@ def create_tools_tab(notebook, department_var):
             result_win.destroy()
 
     btn_text = "Arrive" if loc.lower().startswith("palletizingstation") else "Search"
-    ttk.Button(tools_frame, text=btn_text, command=on_search).grid(row=3, column=0, columnspan=3, pady=(10,0))
+    search_btn = ttk.Button(tools_frame, text=btn_text, command=on_search)
+    search_btn.grid(row=3, column=0, columnspan=3, pady=(10,0))
 
-    return tools_frame
+    return tools_frame, tools_error_var

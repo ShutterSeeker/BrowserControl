@@ -139,6 +139,18 @@ def build_ui():
         background=[("active", "#ffeb3b")],
         bordercolor=[("active", "#b38f00")]
     )
+    style.configure("Danger.TButton",
+        background="#ff4444",
+        foreground="white",
+        bordercolor="#aa0000",
+        focusthickness=2,
+        relief="solid",
+        padding=6
+    )
+    style.map("Danger.TButton",
+        background=[("active", "#cc0000")],
+        foreground=[("active", "white")]
+    )
 
     # Default font for all widgets
     default_font = ("Segoe UI", 10)
@@ -241,7 +253,7 @@ def build_ui():
 
     # HOME: center labels across 3 columns
     for i in range(3): home_frame.columnconfigure(i, weight=1)
-    tk.Label(home_frame, textvariable=error_var, bg="#2b2b2b", fg="white").grid(row=0, column=0, columnspan=3, sticky="ew")
+    tk.Label(home_frame, textvariable=error_var, bg="#2b2b2b", fg="white", wraplength=200).grid(row=0, column=0, columnspan=3, sticky="ew")
     tk.Label(home_frame, textvariable=department_var, bg="#2b2b2b", fg="white").grid(row=1, column=0, columnspan=3, sticky="ew", pady=(5,10))
 
     # Launch on its own row
@@ -322,7 +334,7 @@ def build_ui():
                 notebook.tab(idx, text="Settings      ")
             else:
                 notebook.tab(idx, text="Settings ⚠")
-            root.after(2000, pulse_settings_tab)
+            root.after(1500, pulse_settings_tab)
 
 
     if is_update_available.get():
