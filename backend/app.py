@@ -33,6 +33,8 @@ def update_pallet_arrived_by_tote():
             Trusted_Connection=yes;
         """)
         sql = """
+        DECLARE @PARENT_CONTAINER_ID NVARCHAR(50) = ?;
+
         UPDATE SHIPPING_CONTAINER SET
             USER_DEF2 = USER_DEF1
             ,USER_DEF1 = N'Arrived'
@@ -64,79 +66,9 @@ def select_pallet_arrived_by_tote():
             DATABASE={database};
             Trusted_Connection=yes;
         """)
-        sql = """
-        DECLARE @TOTEID NVARCHAR(50) = ?;
-
-        DECLARE @TREE_UNIT NUMERIC(9,0);
-        DECLARE @ActivePallets TABLE (
-            TREE_UNIT NUMERIC(9,0),
-            PARENT_CONTAINER_ID NVARCHAR(25),
-            INTERNAL_SHIPMENT_NUM NUMERIC(9,0),
-            PARENT NUMERIC(9,0),
-            IN_PROCESS BIT
-        );
-
-        -- Fill table with filtered results.
-        INSERT INTO @ActivePallets
-        SELECT 
-            TREE_UNIT, PARENT_CONTAINER_ID, INTERNAL_SHIPMENT_NUM, PARENT
-            ,IN_PROCESS = ISNULL((SELECT TOP 1 1 FROM SHIPPING_CONTAINER SCC WITH (NOLOCK) WHERE SCC.TREE_UNIT = SC.TREE_UNIT AND SCC.USER_DEF1 = N'Arrived'), 0)
-        FROM SHIPPING_CONTAINER SC WITH (NOLOCK)
-        WHERE STATUS = 401
-            AND TREE_UNIT NOT IN (
-                SELECT TREE_UNIT FROM SHIPPING_CONTAINER WHERE USER_DEF1 = N'Dropped'
-            )
-            AND (USER_DEF1 = @TOTEID OR USER_DEF2 = @TOTEID);
-
-        -- Early exit if tote is on multiple pallets that are in the same IN_PROCESS status.
-        IF EXISTS (
-            SELECT TOP 1 N'X'
-            FROM @ActivePallets
-            GROUP BY TREE_UNIT, IN_PROCESS
-            HAVING COUNT(DISTINCT TREE_UNIT) > 1
-        )
-        BEGIN
-            SELECT
-                MSG = N'Tote exists on multiple active pallets'
-                ,PARENT_CONTAINER_ID = N''
-                ,TOTES_IN_TRANSIT = N''
-            RETURN
-        END
-
-        -- Find TREE_UNIT.
-        SELECT TOP 1 @TREE_UNIT = TREE_UNIT FROM @ActivePallets ORDER BY IN_PROCESS DESC -- prefer pallets in process
-
-        IF @TREE_UNIT IS NOT NULL
-        BEGIN
-            -- Get pallet, shipment ID, and customer.
-            SELECT TOP 1 
-                MSG = N''
-                ,PARENT_CONTAINER_ID
-                ,TOTES_IN_TRANSIT = (
-                    SELECT COUNT(DISTINCT SC.USER_DEF1)
-                    FROM SHIPPING_CONTAINER SC WITH (NOLOCK)
-                    WHERE SC.TREE_UNIT = @TREE_UNIT AND SC.USER_DEF1 IS NOT NULL AND SC.USER_DEF1 <> N'Arrived'
-                )
-            FROM
-                @ActivePallets AP
-                LEFT JOIN SHIPMENT_HEADER SH WITH (NOLOCK) ON SH.INTERNAL_SHIPMENT_NUM = AP.INTERNAL_SHIPMENT_NUM
-            WHERE
-                AP.PARENT = @TREE_UNIT
-            RETURN
-        END
-        ELSE
-        BEGIN
-            SELECT
-                MSG = N'No pallet found'
-                ,PARENT_CONTAINER_ID = N''
-                ,TOTES_IN_TRANSIT = N''
-
-            RETURN
-        END
-        """
 
         cursor = conn.cursor()
-        cursor.execute(sql, (tote,))
+        cursor.execute("EXEC usp_SelectPalletArrivedByTote ?", (tote,)) # Comma needed to send as datatype tuple
         row = cursor.fetchone()
         columns = [desc[0] for desc in cursor.description]
         result = dict(zip(columns, row))

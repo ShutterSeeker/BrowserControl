@@ -16,8 +16,26 @@ from browser_control.tools_tab import create_tools_tab
 import pystray
 from PIL import Image, ImageDraw
 import threading
+import requests
+
 
 VERSION = "1.2.1"
+
+def check_for_update():
+    try:
+        response = requests.get("https://api.github.com/repos/ShutterSeeker/BrowserControl/releases/latest", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            latest_version = data.get("tag_name", "").lstrip("v")
+            if latest_version > VERSION:
+                return f"New version available: v{latest_version}", True
+            else:
+                return "You are on the latest version.", False
+        else:
+            return "Failed to check for updates.", False
+    except Exception as e:
+        return f"Update check error: {e}", False
+
 
 def get_path(file):
     # if frozen (running as EXE), look next to the EXE
@@ -107,6 +125,20 @@ def build_ui():
     style.map("TNotebook.Tab", background=[("selected","#2b2b2b")], foreground=[("selected","white")])
     style.configure("TButton", background="white", foreground="black", font=("Segoe UI", 10))
     style.map("TButton", background=[("active","#e0e0e0")])
+    style.configure("Update.TButton",
+        background="#ffff88",       # light yellow
+        foreground="black",
+        bordercolor="#ccaa00",      # dark yellow border (used on Windows)
+        focusthickness=2,
+        relief="solid",
+        padding=6
+    )
+
+    # Appearance on hover update
+    style.map("Update.TButton",
+        background=[("active", "#ffeb3b")],
+        bordercolor=[("active", "#b38f00")]
+    )
 
     # Default font for all widgets
     default_font = ("Segoe UI", 10)
@@ -169,6 +201,8 @@ def build_ui():
     department_var = tk.StringVar(value=cfg["department"])  
     zoom_var = tk.StringVar(value=cfg["zoom_var"] or "Off")
     dark_var = tk.BooleanVar(value=cfg["darkmode"])
+    update_var = tk.StringVar(value="")
+    is_update_available = tk.BooleanVar(value=False)
 
     # Animation state
     anim_after_id = None
@@ -238,7 +272,7 @@ def build_ui():
     # add this trace to auto‑update the button text whenever zoom_var changes:
     zoom_var.trace_add('write', lambda *args: zoom_btn_custom.config(text=f"{zoom_var.get()}%"))
 
-    # SETTINGS tab remains unchanged
+    # SETTINGS tab
     tk.Label(settings_frame, text="Location", bg="#2b2b2b", fg="white").grid(row=0, column=0, sticky="w", pady=5)
     ttk.Combobox(settings_frame, textvariable=department_var, values=DEPARTMENTS, state="readonly").grid(row=0, column=1, sticky="ew", padx=5)
     tk.Label(settings_frame, text="Zoom %", bg="#2b2b2b", fg="white").grid(row=1, column=0, sticky="w", pady=5)
@@ -248,11 +282,51 @@ def build_ui():
         save_settings_click(department_var.get(), dark_var.get(), zoom_var.get())
         pass_window_geometry()
         error_var.set("Settings saved")
+
+    # Buttons
     save_btn = ttk.Button(settings_frame, text="Save Settings", command=on_save_settings)
-    save_btn.grid(row=3, column=0, columnspan=2, pady=10)
-    for col in range(2): settings_frame.columnconfigure(col, weight=1)
+
+    msg, needs_update = check_for_update()
+    update_var.set(msg)
+    is_update_available.set(needs_update)
+
+    if is_update_available.get():
+        def open_update_page():
+            import webbrowser
+            webbrowser.open("https://github.com/ShutterSeeker/BrowserControl/releases/latest")
+
+        # Create a sub-frame for button alignment
+        button_frame = tk.Frame(settings_frame, bg="#2b2b2b")
+        button_frame.grid(row=3, column=0, columnspan=2, pady=10)
+
+        save_btn = ttk.Button(button_frame, text="Save Settings", command=on_save_settings)
+        update_btn = ttk.Button(button_frame, text="Update", command=open_update_page, style="Update.TButton")
+
+        save_btn.grid(row=0, column=0, padx=5, sticky="ew")
+        update_btn.grid(row=0, column=1, padx=5, sticky="ew")
+
+        settings_frame.columnconfigure(0, weight=1)
+        settings_frame.columnconfigure(1, weight=1)
+    else:
+        save_btn.grid(row=3, column=0, columnspan=2, pady=10)
+        settings_frame.columnconfigure(0, weight=1)
+
 
     create_tools_tab(notebook, department_var)
+
+    def pulse_settings_tab():
+        if is_update_available.get():
+            idx = notebook.index(settings_frame)
+            label = notebook.tab(idx, option="text")
+            if label.endswith("⚠"):
+                notebook.tab(idx, text="Settings      ")
+            else:
+                notebook.tab(idx, text="Settings ⚠")
+            root.after(2000, pulse_settings_tab)
+
+
+    if is_update_available.get():
+        pulse_settings_tab()
 
     # Then start the mainloop
     root.mainloop()
