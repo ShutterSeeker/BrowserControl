@@ -58,14 +58,19 @@ def generate_bookmarks(department: str):
     if department.startswith("DECANT.WS"):
         scale_extras += [
             {"name": "Inventory", "url": "https://scale20.byjasco.com/scale/insights/2723"},
-            {"name": "Transaction history", "url": "https://scale20.byjasco.com/scale/insights/4026"},
+            {"name": "Transaction history", "url": "https://scale20.byjasco.com/scale/insights/2783"},
         ]
     if department.startswith("PalletizingStation"):
-        scale_extras.append({"name": "Shipping container", "url": "https://scale20.byjasco.com/scale/insights/4026"})
+        scale_extras += [
+            {"name": "Shipping container", "url": "https://scale20.byjasco.com/scale/insights/4026"},
+            {"name": "DIF incoming", "url": f"https://scale20.byjasco.com/scale/insights/80019?selectRows=Y&filters=DATA%E2%96%88%25{department}%25,MESSAGE_TYPE%E2%96%88PalletToteArrival"},
+        ]
     if department == "Packing":
         scale_extras += [
             {"name": "Packing", "url": "https://scale20.byjasco.com/scale/trans/packing"},
-            {"name": "Transaction history", "url": "https://scale20.byjasco.com/scale/insights/4026"},
+            {"name": "Close container", "url": "https://scale20.byjasco.com/scale/trans/closecontainer"},
+            {"name": "Transaction history", "url": "https://scale20.byjasco.com/scale/insights/2783"},
+            {"name": "Shipping container", "url": "https://scale20.byjasco.com/scale/insights/4026"},
         ]
 
     # Extras for LiveMetricsProfile (extend if needed)
