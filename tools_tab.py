@@ -23,8 +23,6 @@ def show_error_popup(title, message):
     text_box.focus()
     text_box.tag_add("sel", "1.0", "end")  # auto-select all
 
-
-
 def create_tools_tab(notebook, department_var):
     loc = department_var.get()
     if not (loc.startswith("DECANT.WS") or loc.lower().startswith("palletizingstation")):
@@ -198,5 +196,11 @@ def create_tools_tab(notebook, department_var):
     btn_text = "Arrive" if loc.lower().startswith("palletizingstation") else "Search"
     search_btn = ttk.Button(tools_frame, text=btn_text, command=on_search)
     search_btn.grid(row=3, column=0, columnspan=3, pady=(10,0))
+
+    def on_enter_key(event):
+        if notebook.tab(notebook.select(), "text") == "Tools":
+            search_btn.invoke()
+
+    tools_frame.bind_all("<Return>", on_enter_key)
 
     return tools_frame, tools_error_var

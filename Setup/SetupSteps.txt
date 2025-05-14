@@ -34,4 +34,4 @@ Debug
 cd "C:\Users\blake\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --name BrowserControlDebug --icon "browser_control\manh.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\debug\;xcopy /Y /Q browser_control\zoom_control.exe dist\debug\;xcopy /Y /Q dist\BrowserControlDebug.exe dist\debug\
 
 Run
-cd "C:\Users\bbecker\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --windowed --name BrowserControl --icon "browser_control\jasco.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\BrowserControl\;xcopy /Y /Q browser_control\zoom_control.exe dist\BrowserControl\;xcopy /Y /Q dist\BrowserControl.exe dist\BrowserControl\;xcopy /Y /Q browser_control\jasco.ico dist\BrowserControl\
+cd "C:\Users\bbecker\source\repos\BrowserProject"; python -m PyInstaller --clean --onefile --windowed --name BrowserControl --icon "browser_control\jasco.ico" browser_control\main.py;xcopy /Y /Q browser_control\settings.ini dist\;xcopy /Y /Q browser_control\zoom_control.exe dist\;xcopy /Y /Q browser_control\jasco.ico dist\

@@ -10,18 +10,26 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from browser_control.bookmarks import generate_bookmarks
-from browser_control.zoom_controls import ZoomControls
 from browser_control.settings import load_settings, save_window_geometry, resource_path
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException
+import subprocess
+from threading import Event
+import pyautogui
+import pyperclip
 
 # Global ZoomControls instance, set after launch
-zoom_controller = None
 scale_hwnd = None
 driver_dc = None
 driver_sc = None
-stop_event = threading.Event()
+
+def get_path(file):
+    # if frozen (running as EXE), look next to the EXE
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), file)
+    # else (running from source), load the one in browser_control/
+    return resource_path(file)
 
 def select_on_scale(logistics_unit: str, gtin: str):
     global driver_sc
@@ -76,14 +84,23 @@ def select_on_scale(logistics_unit: str, gtin: str):
 
 def close_app():
     global driver_dc, driver_sc, scale_hwnd
-    try:
-        if driver_dc:
-            driver_dc.quit()
-    except: pass
-    try:
-        if driver_sc:
-            driver_sc.quit()
-    except: pass
+
+    def close_driver(driver, name):
+        try:
+            if driver:
+                print(f"[DEBUG] Closing {name}")
+                driver.quit()
+        except Exception as e:
+            print(f"[ERROR] Failed to close {name}: {e}")
+
+    t1 = threading.Thread(target=close_driver, args=(driver_dc, "DC"), daemon=True)
+    t2 = threading.Thread(target=close_driver, args=(driver_sc, "SC"), daemon=True)
+
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
     driver_dc = driver_sc = scale_hwnd = None
 
 def get_window_state(driver, exclude_window=None):
@@ -141,75 +158,110 @@ def get_profile_path(profile) -> str:
     rel = os.path.join("profiles", profile)
     return resource_path(rel)
 
+# Helper to run AHK credentials
+def run_ahk_credentials(hwnd, user, pwd):
+    exe_path = get_path("credentials.exe")
+    if not os.path.isfile(exe_path):
+        print("Credentials executable not found")
+    try:
+        subprocess.run([exe_path, str(hwnd), str(user), str(pwd)], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Credentials failed (exit {e.returncode})")
+    except Exception as e:
+        print(f"Credentials failed ({e})")
 
-def launch_app(department_var, dark_mode_var, zoom_var):
-    """
-    Starts the Selenium threads to launch DC and Scale windows.
-    After starting, sets the global `zoom_controller` to control zoom.
-    """
-    global zoom_controller, scale_hwnd, driver_dc, driver_sc
-    stop_event.clear()
+
+def launch_dc():
     cfg = load_settings()
-    
-    def _worker():
-        #global driver_sc
-        global zoom_controller, scale_hwnd, driver_dc, driver_sc
-        try:            
-            # 1. Compute a real, absolute path
+    global driver_dc
+
+    chrome_ready = Event()  # <-- signal from thread to main
+    driver_holder = {}
+
+    def dc_worker():
+        global driver_dc
+        try:
             dc_profile = get_profile_path("LiveMetricsProfile")
-            sc_profile = get_profile_path("ScaleProfile")
-
-            # 2. Make sure it exists
             os.makedirs(dc_profile, exist_ok=True)
-            os.makedirs(sc_profile, exist_ok=True)
 
-            # 3. Tell Chrome to use it
             opts_dc = webdriver.ChromeOptions()
             opts_dc.add_argument(f"--user-data-dir={dc_profile}")
             opts_dc.add_argument("--log-level=3")
+            opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
+            opts_dc.add_experimental_option("useAutomationExtension", False)
 
+            service_dc = Service(ChromeDriverManager().install())
+            print("[DEBUG] Starting DC window")
+            driver_dc = webdriver.Chrome(service=service_dc, options=opts_dc)
+            driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
+            driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
+            driver_dc.get(cfg['dc_link'])
+
+            WebDriverWait(driver_dc, 10).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+
+            driver_dc.execute_script("document.title = 'DC'")
+
+            driver_holder["driver"] = driver_dc
+            chrome_ready.set()  # <-- signal main thread
+        except Exception as e:
+            print(f"[ERROR] DC worker failed: {e}")
+            chrome_ready.set()  # still signal to avoid hanging
+
+    threading.Thread(target=dc_worker, daemon=True).start()
+
+    return chrome_ready, driver_holder
+
+def setup_dc(username, password):
+    pyperclip.copy(username)
+    pyautogui.hotkey("ctrl", "v")
+    pyautogui.press("tab")
+
+    pyperclip.copy(password)
+    pyautogui.hotkey("ctrl", "v")
+    pyautogui.press("enter")
+    pyperclip.copy("") # clear password
+
+    WebDriverWait(driver_dc, 10).until(
+        lambda d: d.title.startswith("Welcome")
+    )
+    
+    driver_dc.execute_script("window.open('');")
+    driver_dc.switch_to.window(driver_dc.window_handles[-1]) # Switch to the new tab
+    driver_dc.get("https://dc.byjasco.com/LiveMetrics")
+
+def set_window_state(win, state):
+    if state == 'maximized':
+        print(f"[DEBUG] {win} is being maximized")
+        win.maximize()
+    elif state == 'minimized':
+        print(f"[DEBUG] {win} is being minimized")
+        win.minimize()
+
+def launch_sc(department_var):
+    global driver_sc
+    cfg = load_settings()
+
+    chrome_ready = Event()  # <-- signal from thread to main
+    driver_holder = {}
+    
+    def sc_worker():
+        global driver_sc
+        try:  
+            # 1. Compute path          
+            sc_profile = get_profile_path("ScaleProfile")
+            # 2. Make sure it exists
+            os.makedirs(sc_profile, exist_ok=True)
+            # 3. Tell Chrome to use it
             opts_sc = webdriver.ChromeOptions()
             opts_sc.add_argument(f"--user-data-dir={sc_profile}")
             opts_sc.add_argument("--log-level=3")
 
             sel = department_var.get()
-            
-            
             # create/prepare profiles & bookmarks
             generate_bookmarks(sel)
-
-            # DC window
-            service_dc = Service(ChromeDriverManager().install())
-            opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
-            opts_dc.add_experimental_option("useAutomationExtension", False)
-            print("[DEBUG] Starting DC window")
-            try:
-                driver_dc  = webdriver.Chrome(service=service_dc, options=opts_dc)
-            except Exception as e:
-                print("Failed to start DC window:", e)
-                return
             
-            driver_dc.set_window_position(cfg['dc_x'], cfg['dc_y'])
-            driver_dc.set_window_size(cfg['dc_width'], cfg['dc_height'])
-            dc_pos = driver_dc.get_window_position()
-            dc_size = driver_dc.get_window_size()
-            dc_state = cfg.get('dc_state', 'normal').lower()
-            print(f"[DEBUG] dc_state: {dc_state}")
-            print(f"[DEBUG] Looking for DC window at {dc_pos}, size {dc_size}")
-            dc_win = None
-            driver_dc.get(cfg['dc_link'])
-            driver_dc.execute_script("document.title = 'DC'")
-            time.sleep(0.5)
-            dc_win = gw.getWindowsWithTitle('DC - Google Chrome')[0]
-            print(f"[DEBUG] dc_win: {dc_win}")
-            if dc_state == 'maximized':
-                print("[DEBUG] dc_driver is being maximized")
-                dc_win.maximize()
-            elif dc_state == 'minimized':
-                print("[DEBUG] dc_driver is being minimized")
-                dc_win.minimize()
-
-            # Scale window
             service_sc = Service(ChromeDriverManager().install())
             opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
             opts_sc.add_experimental_option("useAutomationExtension", False)
@@ -221,111 +273,111 @@ def launch_app(department_var, dark_mode_var, zoom_var):
                 return
             driver_sc.set_window_position(cfg['sc_x'], cfg['sc_y'])
             driver_sc.set_window_size(cfg['sc_width'], cfg['sc_height'])
-            global scale_hwnd
-            sc_pos = driver_sc.get_window_position()
-            sc_size = driver_sc.get_window_size()
-            sc_state = cfg.get('sc_state', 'normal').lower()
-            print(f"[DEBUG] sc_state: {sc_state}")
-            print(f"[DEBUG] Looking for Scale window at {sc_pos}, size {sc_size}")
-            driver_sc.get(cfg['sc_link'])
-            driver_sc.execute_script("document.title = 'SC'")
-            time.sleep(0.5)   
-            sc_win = gw.getWindowsWithTitle('SC - Google Chrome')[0]         
-            scale_hwnd = sc_win._hWnd
-            print(f"[DEBUG] Scale HWND found: {scale_hwnd}")
-            if sc_state == 'maximized':
-                print("[DEBUG] sc_driver is being maximized")
-                sc_win.maximize()
-            elif sc_state == 'minimized':
-                print("[DEBUG] sc_driver is being minimized")
-                sc_win.minimize()
-
-            # Attach ZoomControls
-            zoomer = ZoomControls(driver_sc, zoom_var)
-            zoom_controller = zoomer
-            #print("Zoom hooked up")
-
-            # wait indefinitely for the Scale sign‑on menu to appear
-            while not stop_event.is_set() and "SignonMenuRF.aspx" not in driver_sc.current_url:
-                time.sleep(0.5)
-            if stop_event.is_set():
-                return
             
-            try:
-                driver_sc.find_element(By.XPATH, "//input[@type='button' and @value='Continue']").click()
-            except:
-                print("No Continue button appeared — maybe already on menu.")
+            driver_sc.get(cfg['sc_link'])
 
-            WebDriverWait(driver_sc, 10).until(
-                lambda d: d.current_url.startswith("https://scale20.byjasco.com/RF/SignonMenuRF.aspx")
-            )
-
-            if sel.startswith("DECANT.WS"):
-                # Go to DecantProcessing
-                driver_sc.get("https://scale20.byjasco.com/RF/DecantProcessing.aspx")
-
-                if dark_mode_var.get():
-                    WebDriverWait(driver_sc, 10).until(
-                        EC.element_to_be_clickable((By.ID, "btnToggleDarkMode"))
-                    ).click()
-
-            elif sel.startswith("PalletizingStation"):
-                # Go to PalletComplete page
-                driver_sc.get("https://scale20.byjasco.com/RF/PalletCompleteRF.aspx")
-
-                # Wait for input box
-                WebDriverWait(driver_sc, 10).until(
-                    EC.presence_of_element_located((By.ID, "txtSlotstaxLoc"))
-                )
-
-                # Enter station name
-                station_input = driver_sc.find_element(By.ID, "txtSlotstaxLoc")
-                station_input.clear()
-                station_input.send_keys(sel)
-
-                # Wait for and select "Shipping" from dropdown
-                select_elem = Select(driver_sc.find_element(By.ID, "dropdownExecutionMode"))
-                select_elem.select_by_visible_text("Shipping")
-
-                # Click "Begin"
-                WebDriverWait(driver_sc, 10).until(
-                    EC.element_to_be_clickable((By.ID, "btnBegin"))
-                ).click()
-
-            elif sel.startswith("Packing"):
-                driver_sc.get("https://scale20.byjasco.com/scale/trans/packing")
-
-            else:
-                print("Unrecognized department:", sel)
-
-            driver_sc.execute_script("window.open('');")
-            driver_sc.switch_to.window(driver_sc.window_handles[-1]) # Switch to the new tab
-            driver_sc.get("https://scale20.byjasco.com/RF/JPCILaborTrackingRF.aspx")
             WebDriverWait(driver_sc, 10).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
+            
+            driver_sc.execute_script("document.title = 'SC'")
+            driver_holder["driver"] = driver_sc
+            chrome_ready.set()  # <-- signal main thread
+        except Exception as e:
+            print(f"[ERROR] DC worker failed: {e}")
+            chrome_ready.set()  # still signal to avoid hanging
 
-            department_map = {
-                "Packing": "Packing",
-                "DECANT.WS.1": "Decant",
-                "DECANT.WS.2": "Decant",
-                "DECANT.WS.3": "Decant",
-                "DECANT.WS.4": "Decant",
-                "DECANT.WS.5": "Decant",
-                "PalletizingStation1": "PalletizingStation1",
-                "PalletizingStation2": "PalletizingStation2",
-                "PalletizingStation3": "PalletizingStation3"
-            }
+    threading.Thread(target=sc_worker, daemon=True).start()
 
-            selected_ui_value = department_var.get()
-            labor_value = department_map.get(selected_ui_value, selected_ui_value)  # fallback just in case
+    return chrome_ready, driver_holder
 
-            select_element = Select(driver_sc.find_element(By.ID, "DropDownListDepartment"))
-            select_element.select_by_visible_text(labor_value)
-            #print(f"[DEBUG] launcher end driver_dc: {driver_dc}, driver_sc: {driver_sc}")
-        except Exception:
-            # swallow any errors on shutdown or network failures
-            return
-    # Start thread
-    thread = threading.Thread(target=_worker, daemon=True)
-    thread.start()
+def setup_sc(department_var, dark_mode_var, username, password):
+    WebDriverWait(driver_sc, 10).until(
+                EC.presence_of_element_located((By.ID, "userNameInput"))
+            ).send_keys(username)
+    WebDriverWait(driver_sc, 10).until(
+                EC.presence_of_element_located((By.ID, "passwordInput"))
+            ).send_keys(password)
+    WebDriverWait(driver_sc, 10).until(
+        EC.element_to_be_clickable((By.ID, "submitButton"))
+    ).click()
+    
+    sel = department_var.get()
+    clicked = False
+    for _ in range(10):  # try up to 10 times (1 second total)
+        try:
+            driver_sc.find_element(By.XPATH, "//input[@type='button' and @value='Continue']").click()
+            clicked = True
+            break
+        except NoSuchElementException:
+            time.sleep(0.1)
+
+    if not clicked:
+        print("No Continue button appeared — maybe already on menu.")
+
+    WebDriverWait(driver_sc, 10).until(
+        lambda d: d.current_url.startswith("https://scale20.byjasco.com/RF/SignonMenuRF.aspx")
+    )
+
+    if sel.startswith("DECANT.WS"):
+        # Go to DecantProcessing
+        driver_sc.get("https://scale20.byjasco.com/RF/DecantProcessing.aspx")
+
+        if dark_mode_var.get():
+            WebDriverWait(driver_sc, 10).until(
+                EC.element_to_be_clickable((By.ID, "btnToggleDarkMode"))
+            ).click()
+
+    elif sel.startswith("PalletizingStation"):
+        # Go to PalletComplete page
+        driver_sc.get("https://scale20.byjasco.com/RF/PalletCompleteRF.aspx")
+
+        # Wait for input box
+        WebDriverWait(driver_sc, 10).until(
+            EC.presence_of_element_located((By.ID, "txtSlotstaxLoc"))
+        )
+
+        # Enter station name
+        station_input = driver_sc.find_element(By.ID, "txtSlotstaxLoc")
+        station_input.clear()
+        station_input.send_keys(sel)
+
+        # Wait for and select "Shipping" from dropdown
+        select_elem = Select(driver_sc.find_element(By.ID, "dropdownExecutionMode"))
+        select_elem.select_by_visible_text("Shipping")
+
+        # Click "Begin"
+        WebDriverWait(driver_sc, 10).until(
+            EC.element_to_be_clickable((By.ID, "btnBegin"))
+        ).click()
+
+    elif sel.startswith("Packing"):
+        driver_sc.get("https://scale20.byjasco.com/scale/trans/packing")
+
+    else:
+        print("Unrecognized department:", sel)
+
+    driver_sc.execute_script("window.open('');")
+    driver_sc.switch_to.window(driver_sc.window_handles[-1]) # Switch to the new tab
+    driver_sc.get("https://scale20.byjasco.com/RF/JPCILaborTrackingRF.aspx")
+    WebDriverWait(driver_sc, 10).until(
+        lambda d: d.execute_script("return document.readyState") == "complete"
+    )
+
+    department_map = {
+        "Packing": "Packing",
+        "DECANT.WS.1": "Decant",
+        "DECANT.WS.2": "Decant",
+        "DECANT.WS.3": "Decant",
+        "DECANT.WS.4": "Decant",
+        "DECANT.WS.5": "Decant",
+        "PalletizingStation1": "PalletizingStation1",
+        "PalletizingStation2": "PalletizingStation2",
+        "PalletizingStation3": "PalletizingStation3"
+    }
+
+    selected_ui_value = department_var.get()
+    labor_value = department_map.get(selected_ui_value, selected_ui_value)  # fallback just in case
+
+    select_element = Select(driver_sc.find_element(By.ID, "DropDownListDepartment"))
+    select_element.select_by_visible_text(labor_value)

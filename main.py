@@ -10,16 +10,21 @@ import ctypes
 from tkinter import ttk
 import subprocess
 from browser_control.settings import load_settings, save_settings_click, save_position, resource_path
-from browser_control.launcher import launch_app, close_app, pass_window_geometry
-import browser_control.launcher as launcher
+from browser_control.launcher import launch_sc, launch_dc, close_app, pass_window_geometry, set_window_state, setup_sc, setup_dc
 from browser_control.tools_tab import create_tools_tab
+from browser_control.bookmarks import get_profile_data_path
 import pystray
 from PIL import Image, ImageDraw
 import threading
 import requests
+import time
+import pygetwindow as gw
+from ldap3 import Connection, NTLM
+import win32gui
 
-
-VERSION = "1.2.1"
+VERSION = "1.3.0"
+DC_TITLE = "DC - Google Chrome"
+SC_TITLE = "SC - Google Chrome"
 
 def check_for_update():
     try:
@@ -36,6 +41,77 @@ def check_for_update():
     except Exception as e:
         return f"Update check error: {e}", False
 
+def validate_credentials(username, password, domain="JASCOPRODUCTS"):
+    #server = Server(domain, get_info=ALL)  # auto-discovery via DNS
+    server = "JASDC03"
+    user_dn = f"{domain}\\{username}"
+
+    try:
+        conn = Connection(server, user=user_dn, password=password, authentication=NTLM)
+        if not conn.bind():
+            print("Bind failed:", conn.result)
+            return False
+        print("Bind result:", conn.result)
+        print("Last error:", conn.last_error)
+        import time
+        time.sleep(0.5)
+        conn.unbind()
+        return True
+    except Exception as e:
+        print(f"[ERROR]{e}")
+        return False
+
+
+def prompt_credentials(root):
+    creds_win = tk.Toplevel(root)
+    creds_win.title("Sign In")
+    creds_win.configure(bg="#2b2b2b")
+    creds_win.grab_set()  # Focus lock
+    creds_win.resizable(False, False)
+
+    # Position window next to main window
+    root_x = root.winfo_x()
+    root_y = root.winfo_y()
+    creds_win.geometry(f"+{root_x - 7}+{root_y - 150}")  # offset to the right and down
+
+    # Fields and variables
+    tk.Label(creds_win, text="Username", bg="#2b2b2b", fg="white").grid(row=0, column=0, padx=10, pady=5)
+    tk.Label(creds_win, text="Password", bg="#2b2b2b", fg="white").grid(row=1, column=0, padx=10, pady=5)
+
+    username_var = tk.StringVar()
+    password_var = tk.StringVar()
+
+    username_entry = tk.Entry(creds_win, textvariable=username_var)
+    password_entry = tk.Entry(creds_win, textvariable=password_var, show="*")
+
+    username_entry.grid(row=0, column=1, padx=10, pady=5)
+    password_entry.grid(row=1, column=1, padx=10, pady=5)
+
+    result = {}
+
+    def submit():
+        result["username"] = username_var.get()
+        result["password"] = password_var.get()
+        creds_win.destroy()
+
+    # Bind Enter key behavior
+    def on_username_enter(event):
+        password_entry.focus_set()
+
+    def on_password_enter(event):
+        submit()
+
+    username_entry.bind("<Return>", on_username_enter)
+    password_entry.bind("<Return>", on_password_enter)
+
+
+    # Buttons
+    ttk.Button(creds_win, text="Submit", command=submit).grid(row=2, column=0, columnspan=2, pady=10)
+
+    creds_win.after(100, lambda: username_entry.focus_set())  # Focus username after window appears
+    creds_win.wait_window()  # block until closed
+    return result if result else None
+
 
 def get_path(file):
     # if frozen (running as EXE), look next to the EXE
@@ -46,7 +122,7 @@ def get_path(file):
 
 # Helper to run AHK zoom control
 def run_ahk_zoom(percent: str) -> str:
-    hwnd = launcher.scale_hwnd
+    hwnd = sc_hwnd
     if not hwnd:
         return "Scale window not found"
     exe_path = get_path("zoom_control.exe")
@@ -84,6 +160,7 @@ def build_ui():
         sys.exit(0)
 
     cfg = load_settings()
+    user_credentials = {"username": None, "password": None}
 
     tray_icon = None
 
@@ -216,31 +293,6 @@ def build_ui():
     update_var = tk.StringVar(value="")
     is_update_available = tk.BooleanVar(value=False)
 
-    # Animation state
-    anim_after_id = None
-    dot_count = 0
-
-    def animate_spinner():
-        spinner_chars = ['|', '/', '–', '\\']
-        nonlocal dot_count, anim_after_id
-        dot_count = (dot_count + 1) % len(spinner_chars)
-        error_var.set(f"Launching chrome {spinner_chars[dot_count]}")
-        anim_after_id = root.after(200, animate_spinner)
-
-    def stop_animation():
-        nonlocal anim_after_id
-        if anim_after_id:
-            root.after_cancel(anim_after_id)
-            anim_after_id = None
-
-    def check_ready():
-        if launcher.scale_hwnd:
-            stop_animation()
-            error_var.set("Ready!")
-            launch_btn.state(['!disabled'])
-        else:
-            root.after(200, check_ready)
-            
     def on_department_change(*args):
         # Remove the old Tools tab if it exists
         for i in range(notebook.index("end")):
@@ -257,25 +309,141 @@ def build_ui():
     tk.Label(home_frame, textvariable=department_var, bg="#2b2b2b", fg="white").grid(row=1, column=0, columnspan=3, sticky="ew", pady=(5,10))
 
     # Launch on its own row
-    launch_btn = ttk.Button(home_frame, text="Launch", command=lambda: None)
+    launch_btn = ttk.Button(home_frame, text="Login", command=lambda: None)
     launch_btn.grid(row=2, column=0, columnspan=3, pady=(0,10))
+
     def on_launch_toggle():
-        nonlocal anim_after_id
+        if not user_credentials["username"] or not user_credentials["password"]:
+            creds = prompt_credentials(root)
+            if not creds or not creds["username"] or not creds["password"]:
+                error_var.set("Launch cancelled.")
+                return
+            if not validate_credentials(creds["username"], creds["password"]):
+                error_var.set("Invalid credentials.")
+                return
+
+            user_credentials.update(creds)
+
+        username = creds["username"]
+        password = creds["password"]
         launch_btn.state(['disabled'])
-        animate_spinner()
-        launch_app(department_var, dark_var, zoom_var)
-        check_ready()
-        launch_btn.config(text='Close', command=on_close_app)
+        error_var.set("Launching Chrome...")
+
+        dc_event = threading.Event()
+        sc_event = threading.Event()
+
+        def launch_dc_thread():
+            dc_ready, _ = launch_dc()
+            dc_ready.wait(timeout=20)
+
+            for _ in range(50):  # wait up to 5 seconds
+                windows = gw.getWindowsWithTitle(DC_TITLE)
+                if windows:
+                    dc_win = windows[0]
+                    break
+                time.sleep(0.1)
+            else:
+                print(f"[ERROR] Timed out waiting for DC window: {DC_TITLE}")
+                return
+
+            if cfg["dc_link"] == "https://dc.byjasco.com/Welcome":
+                def wait_for_window_active(title, timeout=5):
+                    for _ in range(int(timeout * 10)):  # check every 100ms
+                        active_hwnd = win32gui.GetForegroundWindow()
+                        matching_windows = gw.getWindowsWithTitle(title)
+                        if matching_windows and matching_windows[0]._hWnd == active_hwnd:
+                            return True
+                        time.sleep(0.1)
+                    return False
+
+                def start_setup_dc(dc_win, title):
+                    dc_win.activate()  # request focus
+
+                    if not wait_for_window_active(title):
+                        print("[ERROR] Chrome window did not become active.")
+                        return
+
+                    setup_dc(username, password)
+
+                start_setup_dc(dc_win, DC_TITLE)
+
+            set_window_state(dc_win, cfg["dc_state"])
+            dc_event.set()
+
+        def launch_sc_thread():
+            sc_ready, _ = launch_sc(department_var)
+            sc_ready.wait(timeout=20)
+
+            global sc_hwnd
+            for _ in range(50):  # wait up to 5 seconds
+                windows = gw.getWindowsWithTitle(SC_TITLE)
+                if windows:
+                    sc_win = windows[0]
+                    sc_hwnd = sc_win._hWnd
+                    break
+                time.sleep(0.1)
+            else:
+                print(f"[ERROR] Timed out waiting for SC window: {SC_TITLE}")
+                return
+
+
+            if cfg["dc_link"] == "https://dc.byjasco.com/Welcome":
+                setup_sc(department_var, dark_var, username, password)
+            
+            set_window_state(sc_win, cfg["sc_state"])
+
+            sc_event.set()
+
+        threading.Thread(target=launch_dc_thread, daemon=True).start()
+        threading.Thread(target=launch_sc_thread, daemon=True).start()
+
+        def wait_for_both():
+            if dc_event.is_set() and sc_event.is_set():
+                error_var.set("Ready!")
+                launch_btn.state(['!disabled'])
+                launch_btn.config(text='Logout', command=on_close_app)
+            else:
+                root.after(100, wait_for_both)
+
+        wait_for_both()
+
+    def clear_saved_passwords(profile_name: str):
+        user_credentials["username"] = None
+        user_credentials["password"] = None
+        login_data_path = get_profile_data_path(profile_name, "Login Data")
+        if os.path.exists(login_data_path):
+            try:
+                os.remove(login_data_path)
+                print(f"Deleted saved passwords for {profile_name}")
+            except Exception as e:
+                print(f"Failed to delete Login Data: {e}")
 
     def on_close_app():
-        stop_animation()
-        close_app()
-        launch_btn.config(text='Launch', command=on_launch_toggle)
-        error_var.set("Closed")
-        launch_btn.state(['!disabled'])
+        error_var.set("Logging out...")
+        launch_btn.state(['disabled'])
+
+        def continue_logout():
+            close_app()
+
+            def clear_pw(profile):
+                clear_saved_passwords(profile)
+
+            t1 = threading.Thread(target=clear_pw, args=("LiveMetricsProfile",), daemon=True)
+            t2 = threading.Thread(target=clear_pw, args=("ScaleProfile",), daemon=True)
+
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+            launch_btn.config(text='Launch', command=on_launch_toggle)
+            error_var.set("Logout successful!")
+            launch_btn.state(['!disabled'])
+
+        root.after(100, continue_logout)
+
 
     launch_btn.config(command=on_launch_toggle)
-
     # Zoom buttons below
     zoom_btn_100 = ttk.Button(home_frame, text="100%", command=lambda: error_var.set(run_ahk_zoom("100")))
     zoom_btn_100.grid(row=3, column=1, sticky="e", padx=5)
