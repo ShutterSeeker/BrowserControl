@@ -436,7 +436,7 @@ def build_ui():
             t1.join()
             t2.join()
 
-            launch_btn.config(text='Launch', command=on_launch_toggle)
+            launch_btn.config(text='Login', command=on_launch_toggle)
             error_var.set("Logout successful!")
             launch_btn.state(['!disabled'])
 
