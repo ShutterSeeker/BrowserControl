@@ -1,0 +1,2 @@
+#config.py
+cfg = None

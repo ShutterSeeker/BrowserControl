@@ -5,7 +5,7 @@ import sys
 import time
 import uuid
 import json
-from browser_control.settings import resource_path
+from browser_control.utils import resource_path
 
 
 def get_profile_data_path(profile: str, filename: str) -> str:

@@ -1,50 +1,42 @@
-# browser_control/settings.py
+#settings.py
+import os, sys, configparser, pygetwindow as gw
+from browser_control.constants import CONFIG_FILE, SECTION, DEFAULTS
+from browser_control import config
+from browser_control import state
+from browser_control.utils import get_path
 
-import os, sys
-import configparser
+settings_path = get_path(CONFIG_FILE)
 
-def resource_path(rel_path):
-    # when frozen by PyInstaller, files are unpacked to _MEIPASS
-    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, rel_path)
+def save_settings():
 
-def get_settings_path():
-    # if frozen (running as EXE), look next to the EXE
-    if getattr(sys, "frozen", False):
-        return os.path.join(os.path.dirname(sys.executable), "settings.ini")
-    # else (running from source), load the one in browser_control/
-    return resource_path("settings.ini")
+    # Use existing values from memory
+    department = config.cfg.get("department", "")
+    zoom_var = config.cfg.get("zoom_var", "")
+    darkmode = config.cfg.get("darkmode", "")
 
-CONFIG_FILE = get_settings_path()
-SECTION = "Settings"
+    # Load existing settings.ini
+    parser = configparser.ConfigParser()
+    if os.path.exists(settings_path):
+        parser.read(settings_path)
 
-# Default values for all expected settings
-DEFAULTS = {
-    'department': 'DECANT.WS.5',
-    'zoom_var': '200',
-    'darkmode': 'True',
-    'win_x': '41',
-    'win_y': '1210',
-    'dc_x': '1747',
-    'dc_y': '0',
-    'dc_width': '516',
-    'dc_height': '1471',
-    'sc_x': '-7',
-    'sc_y': '0',
-    'sc_width': '1768',
-    'sc_height': '1471'
-}
+    if not parser.has_section(SECTION):
+        parser.add_section(SECTION)
+
+    # Only update the 3 keys you care about
+    parser[SECTION]['department'] = department
+    parser[SECTION]['zoom_var'] = zoom_var
+    parser[SECTION]['darkmode'] = darkmode
+
+    with open(settings_path, 'w') as configfile:
+        parser.write(configfile)
+
 
 
 def load_settings():
-    """
-    Load settings from the INI file and return the SectionProxy for the Settings section.
-    Ensures all default keys exist so get(), getboolean(), getint() won't KeyError.
-    """
     config = configparser.ConfigParser()
     # read existing config; missing file is okay
-    if os.path.exists(CONFIG_FILE):
-        config.read(CONFIG_FILE)
+    if os.path.exists(settings_path):
+        config.read(settings_path)
     # ensure the section exists
     if not config.has_section(SECTION):
         config.add_section(SECTION)
@@ -55,95 +47,99 @@ def load_settings():
             section[key] = val
     return section
 
-
-def save_settings(department, darkmode, zoom_var, win_x, win_y,
-                  dc_x, dc_y, dc_width, dc_height,
-                  sc_x, sc_y, sc_width, sc_height,
-                  dc_state, sc_state):
-    config = configparser.ConfigParser()
-    if os.path.exists(CONFIG_FILE):
-        config.read(CONFIG_FILE)
-    if not config.has_section(SECTION):
-        config.add_section(SECTION)
-
-    config.set(SECTION, 'department', department)
-    config.set(SECTION, 'darkmode', str(darkmode))
-    config.set(SECTION, 'zoom_var', zoom_var)
-    config.set(SECTION, 'win_x', str(win_x))
-    config.set(SECTION, 'win_y', str(win_y))
-    config.set(SECTION, 'dc_x', str(dc_x))
-    config.set(SECTION, 'dc_y', str(dc_y))
-    config.set(SECTION, 'dc_width', str(dc_width))
-    config.set(SECTION, 'dc_height', str(dc_height))
-    config.set(SECTION, 'sc_x', str(sc_x))
-    config.set(SECTION, 'sc_y', str(sc_y))
-    config.set(SECTION, 'sc_width', str(sc_width))
-    config.set(SECTION, 'sc_height', str(sc_height))
-    config.set(SECTION, 'dc_state', dc_state)
-    config.set(SECTION, 'sc_state', sc_state)
-
-    with open(CONFIG_FILE, 'w') as f:
-        config.write(f)
-
-
-
 def save_position(x, y):
-    """
-    Save just the main UI window position.
-    """
-    # reuse save_settings to persist geometry changes
-    cfg = load_settings()
-    save_settings(
-        cfg.get('department'),
-        cfg.getboolean('darkmode'),
-        cfg.get('zoom_var'),
-        x, y,
-        cfg.getint('dc_x'), cfg.getint('dc_y'), cfg.getint('dc_width'), cfg.getint('dc_height'),
-        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height'),
-        cfg.get('dc_state'), cfg.get('sc_state')
-    )
 
+    # Update in-memory config
+    config.cfg['win_x'] = str(x)
+    config.cfg['win_y'] = str(y)
 
-def save_window_geometry(dc_x, dc_y, dc_w, dc_h,
-                         sc_x, sc_y, sc_w, sc_h,
-                         dc_state, sc_state):
-    cfg = load_settings()
+    # Use a different name for the parser instance
+    parser = configparser.ConfigParser()
+    if os.path.exists(settings_path):
+        parser.read(settings_path)
 
-    if dc_state != 'normal':
-        dc_x = cfg.getint('dc_x')
-        dc_y = cfg.getint('dc_y')
-        dc_w = cfg.getint('dc_width')
-        dc_h = cfg.getint('dc_height')
+    if not parser.has_section(SECTION):
+        parser.add_section(SECTION)
 
-    if sc_state != 'normal':
-        sc_x = cfg.getint('sc_x')
-        sc_y = cfg.getint('sc_y')
-        sc_w = cfg.getint('sc_width')
-        sc_h = cfg.getint('sc_height')
+    parser[SECTION]['win_x'] = str(x)
+    parser[SECTION]['win_y'] = str(y)
 
-    save_settings(
-        cfg.get('department'),
-        cfg.getboolean('darkmode'),
-        cfg.get('zoom_var'),
-        cfg.getint('win_x'), cfg.getint('win_y'),
-        dc_x, dc_y, dc_w, dc_h,
-        sc_x, sc_y, sc_w, sc_h,
-        dc_state, sc_state
-    )
+    with open(settings_path, 'w') as configfile:
+        parser.write(configfile)
 
+def get_window_state(driver, exclude_window=None):
+    try:
+        tolerance = 2
+        pos = driver.get_window_position()
+        size = driver.get_window_size()
+        target = (pos['x'], pos['y'], size['width'], size['height'])
 
-def save_settings_click(department, darkmode, zoom_var):
-    """
-    Save DC and SC window position & size.
-    """
-    # reuse save_settings to persist geometry changes
-    cfg = load_settings()
-    save_settings(
-        department,
-        darkmode,
-        zoom_var,
-        cfg.getint('win_x'), cfg.getint('win_y'),
-        cfg.getint('dc_x'), cfg.getint('dc_y'), cfg.getint('dc_width'), cfg.getint('dc_height'),
-        cfg.getint('sc_x'), cfg.getint('sc_y'), cfg.getint('sc_width'), cfg.getint('sc_height'),
-        cfg.get('dc_state'), cfg.get('sc_state')
-    )
+        for w in gw.getWindowsWithTitle('Google Chrome'):
+            if exclude_window and w == exclude_window:
+                continue
+
+            # Allow for slight mismatch
+            if (abs(w.left - target[0]) <= tolerance and
+                abs(w.top - target[1]) <= tolerance and
+                abs(w.width - target[2]) <= tolerance and
+                abs(w.height - target[3]) <= tolerance):
+
+                if w.isMinimized:
+                    return 'minimized', w
+                elif w.isMaximized:
+                    return 'maximized', w
+                else:
+                    return 'normal', w
+
+        print(f"[DEBUG] can't find matching Chrome window — assuming minimized")
+        return 'minimized', None  # Fallback
+
+    except Exception as e:
+        print(f"[DEBUG] get_window_state error: {e}")
+        return 'unknown', None
+ 
+def save_window_geometry():
+
+    if not state.driver_dc or not state.driver_sc:
+        return "Window(s) not found"
+
+    # Get positions and sizes
+    dc_pos = state.driver_dc.get_window_position()
+    dc_size = state.driver_dc.get_window_size()
+    sc_pos = state.driver_sc.get_window_position()
+    sc_size = state.driver_sc.get_window_size()
+
+    # Determine window state
+    dc_state, dc_win = get_window_state(state.driver_dc)
+    sc_state, _ = get_window_state(state.driver_sc, exclude_window=dc_win)
+
+    # Save DC geometry if normal
+    if dc_state == "normal":
+        config.cfg["dc_x"] = str(dc_pos["x"])
+        config.cfg["dc_y"] = str(dc_pos["y"])
+        config.cfg["dc_width"] = str(dc_size["width"])
+        config.cfg["dc_height"] = str(dc_size["height"])
+
+    # Save SC geometry if normal
+    if sc_state == "normal":
+        config.cfg["sc_x"] = str(sc_pos["x"])
+        config.cfg["sc_y"] = str(sc_pos["y"])
+        config.cfg["sc_width"] = str(sc_size["width"])
+        config.cfg["sc_height"] = str(sc_size["height"])
+
+    # Always save state
+    config.cfg["dc_state"] = dc_state
+    config.cfg["sc_state"] = sc_state
+
+    # Load + update .ini
+    parser = configparser.ConfigParser()
+    if os.path.exists(settings_path):
+        parser.read(settings_path)
+    if not parser.has_section(SECTION):
+        parser.add_section(SECTION)
+
+    for key in config.cfg:
+        parser[SECTION][key] = config.cfg[key]
+
+    with open(settings_path, "w") as configfile:
+        parser.write(configfile)
