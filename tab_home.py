@@ -1,8 +1,8 @@
 # tab_home_login.py
 
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import tkinter as tk
-import time, threading, os, shutil
+import time, threading, os, shutil, webbrowser
 from browser_control.utils import validate_credentials, flash_message
 from browser_control import state, tab_tools
 from browser_control.chrome import start_threads, reorganize_windows, run_ahk_zoom
@@ -81,9 +81,11 @@ def show_main_ui(parent, frame):
     msg_lbl.grid(row=0, column=0, columnspan=3, pady=(10, 2), sticky="n")
     tk.Label(frame, textvariable=state.department_var, bg="#2b2b2b", fg="white").grid(row=1, column=0, columnspan=3, pady=(0, 10), sticky="n")
 
+
     def on_logout(parent, frame):
-        msg_var.set("Logging out...")
-        logout(parent, frame)
+        if messagebox.askyesno("Confirm Logout", "This will close chrome. Are you sure you want to log out?"):
+            msg_var.set("Logging out...")
+            logout(parent, frame)
 
     # Buttons
     logout_btn = ttk.Button(frame, text="Logout", command=lambda: on_logout(parent, frame))
@@ -118,6 +120,7 @@ def show_main_ui(parent, frame):
 
     def wait_for_both(attempt=1):
         if state.dc_event.is_set() and state.sc_event.is_set():
+            state.relaunched = False
             enable_all_clicks()
 
             tools_tab = tab_tools.build_tools_tab()
@@ -128,12 +131,13 @@ def show_main_ui(parent, frame):
             for widget in frame.winfo_children(): # Enable all buttons
                 if isinstance(widget, ttk.Button):
                     widget.state(['!disabled'])
-        elif attempt > 200:  # ~20 seconds total (200 * 100ms)
+        elif attempt > 100 and state.relaunched == False:  # ~20 seconds total (200 * 100ms)
+            state.relaunched = True
             print("[WARN] One or both windows failed to launch. Attempting relaunch.")
-            msg_var.set("Failed. Attempting relaunch...")
             state.should_abort = True
             state.root.after(100, close_chrome())  # shut down any launched windows
-            time.sleep(2)
+            enable_all_clicks()
+            flash_message(msg_lbl, msg_var, "Failed. Attempting relaunch...", status='error')
             profile_path = get_path("profiles")
             if os.path.isdir(profile_path):
                 shutil.rmtree(profile_path)
@@ -141,8 +145,30 @@ def show_main_ui(parent, frame):
             else:
                 print(f"Nothing found at: {profile_path}")
             state.should_abort = False
+            disable_all_clicks()
             start_threads()  # relaunch everything
             wait_for_both()
+        elif attempt > 100:
+            state.relaunched = False
+            print("[WARN] One or both windows failed to relaunch.")
+            state.should_abort = True
+            state.root.after(100, close_chrome())  # shut down any launched windows
+            enable_all_clicks()
+            profile_path = get_path("profiles")
+            if os.path.isdir(profile_path):
+                shutil.rmtree(profile_path)
+                print(f"Deleted folder: {profile_path}")
+            else:
+                print(f"Nothing found at: {profile_path}")
+            state.should_abort = False
+            tools_tab = tab_tools.build_tools_tab()
+            state.notebook.add(tools_tab, text="Tools")
+
+            flash_message(msg_lbl, msg_var, "Failed to launch", status='error')
+
+            for widget in frame.winfo_children(): # Enable all buttons
+                if isinstance(widget, ttk.Button):
+                    widget.state(['!disabled'])
         else:
             state.root.after(100, lambda: wait_for_both(attempt + 1))
 
@@ -157,6 +183,7 @@ def build_home_tab(parent, msg):
     msg_var = tk.StringVar(value=msg)
     msg_lbl = tk.Label(frame, textvariable=msg_var, fg="white", bg="#2b2b2b")
     msg_lbl.grid(row=0, column=0, columnspan=2, pady=(0, 15))
+    flash_message(msg_lbl, msg_var, msg, "success")
 
     # Username + Password
     tk.Label(frame, text="Username:", bg="#2b2b2b", fg="white").grid(row=1, column=0, sticky="e", pady=5)
@@ -187,8 +214,25 @@ def build_home_tab(parent, msg):
             password_var.set("")
             password_entry.focus_set()
 
-    submit_btn = ttk.Button(frame, text="Login", command=on_login_submit)
-    submit_btn.grid(row=3, column=0, columnspan=2, pady=(15, 0))
+    # Buttons
+    button_container = tk.Frame(frame, bg="#2b2b2b")
+    button_container.grid(row=3, column=0, columnspan=2, pady=(15, 0))
+    button_container.columnconfigure(0, weight=1)
+    button_container.columnconfigure(1, weight=1)
+
+    submit_btn = ttk.Button(button_container, text="Login", command=on_login_submit)
+
+    if state.update_available:
+        def open_update_page():
+            webbrowser.open("https://github.com/ShutterSeeker/BrowserControl/releases/latest")
+
+        update_btn = ttk.Button(button_container, text="Update", command=open_update_page, style="Update.TButton")
+        update_btn.grid(row=0, column=0, padx=(0, 5))
+
+        submit_btn.grid(row=0, column=1, padx=(5, 0))
+    else:
+        submit_btn.grid(row=0, column=0, columnspan=2)
+
 
     def hide_login_form():
         username_entry.grid_remove()

@@ -19,3 +19,4 @@ zoom_var = None
 notebook = None
 tools_frame = None
 click_blocker = None
+relaunched = False

@@ -177,12 +177,12 @@ def setup_sc():
     
     sel = config.cfg["department"]
     clicked = False
-    for _ in range(100):  # try up to 10 times (1 second total)
+    for _ in range(10):  # try up to 10 times (1 second total)
         try:
             state.driver_sc.find_element(By.XPATH, "//input[@type='button' and @value='Continue']").click()
             clicked = True
             break
-        except NoSuchElementException:
+        except:
             time.sleep(0.1)
 
     if not clicked:
