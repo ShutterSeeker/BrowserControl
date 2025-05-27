@@ -1,12 +1,14 @@
-# tab_home_login.py
+# tab_home.py
 
+import threading, os, shutil, webbrowser, json, subprocess, win32gui, tkinter as tk
 from tkinter import ttk, messagebox
-import tkinter as tk
-import time, threading, os, shutil, webbrowser
+import tkinter.font as tkfont
+from functools import partial
 from browser_control.utils import validate_credentials, flash_message
 from browser_control import state, tab_tools
 from browser_control.chrome import start_threads, reorganize_windows, run_ahk_zoom
 from browser_control.utils import get_path
+from browser_control.constants import USER_FILE, UPDATE_CHECK_URL
 
 def disable_all_clicks():
     if state.click_blocker is not None:
@@ -178,6 +180,115 @@ def show_main_ui(parent, frame):
     return frame
 
 def build_home_tab(parent, msg):
+
+    user_path = get_path(USER_FILE)
+
+    def load_usernames():
+        if os.path.exists(user_path):
+            try:
+                with open(user_path, "r") as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+
+    def save_usernames(usernames):
+        with open(user_path, "w") as f:
+            json.dump(usernames, f)
+
+    def remember_username(username):
+        usernames = load_usernames()
+        if username not in usernames:
+            usernames.append(username)
+            save_usernames(usernames)
+
+    def remove_username(username):
+        usernames = load_usernames()
+        if username in usernames:
+            usernames.remove(username)
+            save_usernames(usernames)
+
+    class AutoSuggestEntry(tk.Entry):
+        def __init__(self, master, **kwargs):
+            super().__init__(master, **kwargs)
+            self.suggestions = load_usernames()
+            self.popup = None
+            self.bind("<KeyRelease>", self.show_suggestions)
+            self.bind("<FocusIn>", self.show_suggestions)
+            self.bind("<FocusOut>", lambda e: self.master.after(150, self.hide_popup))  # delay so clicks can register
+
+        def show_suggestions(self, event=None):
+            if self.popup:
+                self.popup.destroy()
+
+            val = self.get().lower()
+            matches = [u for u in self.suggestions if val in u.lower()]
+
+            if not matches:
+                return
+
+            self.popup = tk.Toplevel(self)
+            self.popup.attributes("-topmost", True)
+            self.popup.overrideredirect(True)  # no title bar
+            self.popup.configure(bg="white", bd=1, relief="solid")
+
+            # Position relative to screen
+            x = self.winfo_rootx() + 30  # shift right of the entry
+            y = self.winfo_rooty() + 18  # shift below the entry
+            row_height = 33
+            popup_height = row_height * len(matches)
+            font = tkfont.Font(font=self.cget("font"))
+            longest_text = max(matches, key=lambda s: len(s))  # or max width
+            text_width_px = font.measure(longest_text)
+
+            self.popup.geometry(f"{text_width_px + 80}x{popup_height}+{x}+{y}")
+
+            for user in matches:
+                row = tk.Frame(self.popup, bg="#2b2b2b")
+                row.pack(fill="x")
+
+                lbl = tk.Label(row, text=user, font=30, pady=5, anchor="w", bg="#2b2b2b", fg="white")
+                lbl.pack(fill="both", expand=True, side="left")
+
+                del_lbl = tk.Label(row, text="x", fg="red", bg="#2b2b2b", cursor="hand2")
+                del_lbl.pack(side="right", padx=5)
+                del_lbl.bind("<Button-1>", partial(self.delete_user, user))
+
+                def on_enter(e, r=row, l=lbl, d=del_lbl):
+                    r.configure(bg="#7B7B7B")
+                    l.configure(bg="#7B7B7B")
+                    d.configure(bg="#7B7B7B")
+
+
+                def on_leave(e, r=row, l=lbl, d=del_lbl):
+                    r.configure(bg="#2b2b2b")
+                    l.configure(bg="#2b2b2b")
+                    d.configure(bg="#2b2b2b")
+
+                row.bind("<Enter>", on_enter)
+                row.bind("<Leave>", on_leave)
+                lbl.bind("<Enter>", on_enter)
+                lbl.bind("<Leave>", on_leave)
+                lbl.bind("<Button-1>", partial(self.select_user, user))
+
+
+        def hide_popup(self):
+            if self.popup:
+                self.popup.destroy()
+                self.popup = None
+
+        def select_user(self, username, event=None):
+            self.delete(0, tk.END)
+            self.insert(0, username)
+            self.hide_popup()
+            password_entry.focus_set()
+
+        def delete_user(self, username, event=None):
+            remove_username(username)
+            self.suggestions = load_usernames()
+            self.show_suggestions()
+
+
     frame = tk.Frame(parent, bg="#2b2b2b", padx=20, pady=20)
     # Feedback label
     msg_var = tk.StringVar(value=msg)
@@ -189,20 +300,18 @@ def build_home_tab(parent, msg):
     tk.Label(frame, text="Username:", bg="#2b2b2b", fg="white").grid(row=1, column=0, sticky="e", pady=5)
     tk.Label(frame, text="Password:", bg="#2b2b2b", fg="white").grid(row=2, column=0, sticky="e", pady=5)
 
-    username_var = tk.StringVar()
-    password_var = tk.StringVar()
-
-    username_entry = ttk.Entry(frame, textvariable=username_var)
-    password_entry = ttk.Entry(frame, textvariable=password_var, show="*")
-
-    username_entry.grid(row=1, column=1, pady=5, sticky="w")
-    password_entry.grid(row=2, column=1, pady=5, sticky="w")
+    username_entry = AutoSuggestEntry(frame)
+    username_entry.grid(row=1, column=1, pady=5, sticky="e")
+    password_entry = ttk.Entry(frame, show="*")
+    password_entry.grid(row=2, column=1, pady=5, sticky="e")
 
     def on_login_submit():
-        username = username_var.get()
-        password = password_var.get()
+        username = username_entry.get()
+        password = password_entry.get()
+        print(username)
 
         if validate_credentials(username, password):
+            remember_username(username)
             state.username = username
             state.password = password
             hide_login_form()
@@ -211,7 +320,6 @@ def build_home_tab(parent, msg):
             state.root.after(100, disable_all_clicks)
         else:
             flash_message(msg_lbl, msg_var, "Invalid username or password", "error")
-            password_var.set("")
             password_entry.focus_set()
 
     # Buttons
@@ -224,7 +332,7 @@ def build_home_tab(parent, msg):
 
     if state.update_available:
         def open_update_page():
-            webbrowser.open("https://github.com/ShutterSeeker/BrowserControl/releases/latest")
+            webbrowser.open(UPDATE_CHECK_URL)
 
         update_btn = ttk.Button(button_container, text="Update", command=open_update_page, style="Update.TButton")
         update_btn.grid(row=0, column=0, padx=(0, 5))
@@ -244,7 +352,42 @@ def build_home_tab(parent, msg):
             if isinstance(widget, tk.Label) and widget.cget("text") in ("Username:", "Password:"):
                 widget.grid_remove()
 
+    def is_osk_in_foreground():
+        hwnd = win32gui.GetForegroundWindow()
+        return "on-screen keyboard" in win32gui.GetWindowText(hwnd).lower()
+
+    def get_osk_hwnd():
+        osk_hwnd = None
+        def callback(hwnd, _):
+            nonlocal osk_hwnd
+            if "on-screen keyboard" in win32gui.GetWindowText(hwnd).lower():
+                osk_hwnd = hwnd
+        win32gui.EnumWindows(callback, None)
+        return osk_hwnd
     
-    frame.after(200, lambda: username_entry.focus_set())
+    def wait_until_osk_has_focus():
+        if not is_osk_in_foreground():
+            print("[DEBUG] Waiting for focus")
+            frame.after(100, wait_until_osk_has_focus)
+        else:
+            frame.after(200, lambda: username_entry.focus_force())
+
+    def revive_osk(hwnd):
+        if win32gui.IsIconic(hwnd):
+            print("OSK is minimized, launching again to revive.")
+            subprocess.Popen("osk.exe", shell=True)
+            frame.after(100, wait_until_osk_has_focus)
+        else:
+            print("OSK is already visible, focusing username.")
+            frame.after(100, lambda: username_entry.focus_force())
+
+    def revive_and_refocus():
+        hwnd = get_osk_hwnd()
+        if hwnd:
+            revive_osk(hwnd)
+        else:
+            frame.after(100, lambda: username_entry.focus_force())
+
+    frame.after(200, revive_and_refocus)
     frame.bind_all("<Return>", lambda event: on_login_submit())
     return frame

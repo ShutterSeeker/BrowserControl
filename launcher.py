@@ -1,12 +1,11 @@
 # browser_control/launcher.py
-import threading, os, sys, time, pyautogui
+import threading, os, sys, time
 from selenium import webdriver
 from threading import Event
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import NoSuchElementException
 from browser_control.bookmarks import generate_bookmarks
 from browser_control.utils import resource_path
 from browser_control import config
@@ -105,11 +104,24 @@ def launch_dc():
     return chrome_ready
 
 def setup_dc():
-    pyautogui.write(state.username, interval=0.01)
-    pyautogui.press("tab")
-    pyautogui.write(state.password, interval=0.01)
-    pyautogui.press("enter")
-
+    if state.should_abort:
+        print("[INFO] setup_dc aborted early.")
+        return
+    try:
+        WebDriverWait(state.driver_dc, 100).until(
+                    EC.presence_of_element_located((By.ID, "MainContent_txtUsername"))
+                ).send_keys(state.username)
+        WebDriverWait(state.driver_dc, 100).until(
+                    EC.presence_of_element_located((By.ID, "MainContent_txtPassword"))
+                ).send_keys(state.password)
+        WebDriverWait(state.driver_dc, 100).until(
+            EC.element_to_be_clickable((By.ID, "MainContent_btnLogin"))
+        ).click()
+    except:
+        return
+    
+    state.driver_dc.get(config.cfg['dc_link'])
+    
 def launch_sc():
     if state.should_abort:
         print("[INFO] launch_sc aborted early.")
@@ -160,7 +172,7 @@ def launch_sc():
 
 def setup_sc():
     if state.should_abort:
-        print("[INFO] launch_sc aborted early.")
+        print("[INFO] setup_sc aborted early.")
         return
     try:
         WebDriverWait(state.driver_sc, 100).until(

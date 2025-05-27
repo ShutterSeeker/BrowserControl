@@ -24,36 +24,24 @@ def launch_dc_thread():
     dc_ready = launch_dc()
     dc_ready.wait(timeout=20)
 
+    all_windows = gw.getAllTitles()
+    print("[DEBUG] Current window titles (DC):")
+    for title in all_windows:
+        print(f"    [DC] {title}")
+
     for _ in range(50):  # wait up to 5 seconds
+        print(f"[DEBUG] Looking for window with title: {DC_TITLE}")
+
         windows = gw.getWindowsWithTitle(DC_TITLE)
         if windows:
             state.dc_win = windows[0]
+            if config.cfg["dc_link"] == "https://dc.byjasco.com/LiveMetrics":
+                setup_dc()
             break
         time.sleep(0.1)
     else:
         print(f"[ERROR] Timed out waiting for DC window: {DC_TITLE}")
         return
-
-    if config.cfg["dc_link"] == "https://dc.byjasco.com/LiveMetrics":
-        def wait_for_window_active(title, timeout=5):
-            for _ in range(int(timeout * 10)):  # check every 100ms
-                active_hwnd = win32gui.GetForegroundWindow()
-                matching_windows = gw.getWindowsWithTitle(title)
-                if matching_windows and matching_windows[0]._hWnd == active_hwnd:
-                    print("[DEBUG] DC win active!")
-                    return True
-                print("[DEBUG] DC win not active yet")
-                time.sleep(0.1)
-            return False
-
-    state.dc_win.activate()  # request focus
-
-    if not wait_for_window_active(DC_TITLE):
-        print("[ERROR] Chrome window did not become active.")
-        return
-
-    setup_dc()
-
 
     set_window_state(state.dc_win, config.cfg["dc_state"])
     state.dc_event.set()
@@ -62,20 +50,24 @@ def launch_sc_thread():
     sc_ready = launch_sc()
     sc_ready.wait(timeout=20)
 
+    all_windows = gw.getAllTitles()
+    print("[DEBUG] Current window titles (SC):")
+    for title in all_windows:
+        print(f"    [SC] {title}")
+
     for _ in range(50):  # wait up to 5 seconds
+        print(f"[DEBUG] Looking for window with title: {SC_TITLE}")
         windows = gw.getWindowsWithTitle(SC_TITLE)
         if windows:
             state.sc_win = windows[0]
             state.sc_hwnd = state.sc_win._hWnd
+            if config.cfg["sc_link"] == "https://scale20.byjasco.com/RF/SignonMenuRF.aspx":
+                setup_sc()
             break
         time.sleep(0.1)
     else:
         print(f"[ERROR] Timed out waiting for SC window: {SC_TITLE}")
         return
-
-
-    if config.cfg["dc_link"] == "https://dc.byjasco.com/LiveMetrics":
-        setup_sc()
     
     set_window_state(state.sc_win, config.cfg["sc_state"])
 

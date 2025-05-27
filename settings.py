@@ -30,8 +30,6 @@ def save_settings():
     with open(settings_path, 'w') as configfile:
         parser.write(configfile)
 
-
-
 def load_settings():
     config = configparser.ConfigParser()
     # read existing config; missing file is okay
