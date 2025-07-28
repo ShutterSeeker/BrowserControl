@@ -14,14 +14,22 @@ def show_splash():
     x = (screen_width // 2) - (width // 2)
     y = (screen_height // 2) - (height // 2)
 
+    # Create border frame
+    border_frame = tk.Frame(splash, bg="#1e1e1e")
+    border_frame.pack(fill="both", expand=True, padx=6, pady=6)
+
+    # Create inner content frame
+    content_frame = tk.Frame(border_frame, bg="#1e1e1e")
+    content_frame.pack(fill="both", expand=True)
+
     splash.geometry(f"{width}x{height}+{x}+{y}")
-    splash.configure(bg="#00acec")
+    splash.configure(bg="#1e1e1e")  # Set outer window background
 
     label = tk.Label(
-        splash,
+        content_frame,  # Parent changed to content_frame
         text="Browser Control\nLoading...",
         font=("Segoe UI", 24, "bold"),
-        bg="#00acec",
+        bg="#1e1e1e",
         fg="white",
         justify="center"
     )

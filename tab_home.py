@@ -133,7 +133,7 @@ def show_main_ui(parent, frame):
             for widget in frame.winfo_children(): # Enable all buttons
                 if isinstance(widget, ttk.Button):
                     widget.state(['!disabled'])
-        elif attempt > 100 and state.relaunched == False:  # ~20 seconds total (200 * 100ms)
+        elif attempt > 200 and state.relaunched == False:  # ~20 seconds total (200 * 100ms)
             state.relaunched = True
             print("[WARN] One or both windows failed to launch. Attempting relaunch.")
             state.should_abort = True
@@ -150,7 +150,7 @@ def show_main_ui(parent, frame):
             disable_all_clicks()
             start_threads()  # relaunch everything
             wait_for_both()
-        elif attempt > 100:
+        elif attempt > 200:
             state.relaunched = False
             print("[WARN] One or both windows failed to relaunch.")
             state.should_abort = True
@@ -371,6 +371,7 @@ def build_home_tab(parent, msg):
             frame.after(100, wait_until_osk_has_focus)
         else:
             frame.after(200, lambda: username_entry.focus_force())
+            frame.after(800, lambda: username_entry.focus_force())
 
     def revive_osk(hwnd):
         if win32gui.IsIconic(hwnd):

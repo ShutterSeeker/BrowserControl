@@ -175,6 +175,7 @@ def setup_sc():
         print("[INFO] setup_sc aborted early.")
         return
     try:
+        # Login handling code remains the same
         WebDriverWait(state.driver_sc, 100).until(
                     EC.presence_of_element_located((By.ID, "userNameInput"))
                 ).send_keys(state.username)
@@ -242,14 +243,27 @@ def setup_sc():
     else:
         print("Unrecognized department:", sel)
 
+    # Modified Labor department selection code
     state.driver_sc.execute_script("window.open('');")
-    state.driver_sc.switch_to.window(state.driver_sc.window_handles[-1]) # Switch to the new tab
+    state.driver_sc.switch_to.window(state.driver_sc.window_handles[-1])
     state.driver_sc.get(LABOR_URL)
+    
+    # Wait for page load
     WebDriverWait(state.driver_sc, 100).until(
         lambda d: d.execute_script("return document.readyState") == "complete"
     )
 
     labor_value = "Decant" if sel.startswith("DECANT") else sel
 
-    select_element = Select(state.driver_sc.find_element(By.ID, "DropDownListDepartment"))
+    # Wait for dropdown to be present and enabled
+    dropdown = WebDriverWait(state.driver_sc, 100).until(
+        EC.presence_of_element_located((By.ID, "DropDownListDepartment"))
+    )
+    
+    # Wait for dropdown to be enabled
+    WebDriverWait(state.driver_sc, 100).until(
+        lambda d: not dropdown.get_attribute("disabled")
+    )
+
+    select_element = Select(dropdown)
     select_element.select_by_visible_text(labor_value)

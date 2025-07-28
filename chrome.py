@@ -25,9 +25,9 @@ def launch_dc_thread():
     dc_ready.wait(timeout=20)
 
     all_windows = gw.getAllTitles()
-    print("[DEBUG] Current window titles (DC):")
-    for title in all_windows:
-        print(f"    [DC] {title}")
+    #print("[DEBUG] Current window titles (DC):")
+    #for title in all_windows:
+    #    print(f"    [DC] {title}")
 
     for _ in range(50):  # wait up to 5 seconds
         print(f"[DEBUG] Looking for window with title: {DC_TITLE}")
@@ -51,9 +51,9 @@ def launch_sc_thread():
     sc_ready.wait(timeout=20)
 
     all_windows = gw.getAllTitles()
-    print("[DEBUG] Current window titles (SC):")
-    for title in all_windows:
-        print(f"    [SC] {title}")
+    #print("[DEBUG] Current window titles (SC):")
+    #for title in all_windows:
+    #    print(f"    [SC] {title}")
 
     for _ in range(50):  # wait up to 5 seconds
         print(f"[DEBUG] Looking for window with title: {SC_TITLE}")
