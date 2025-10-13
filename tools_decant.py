@@ -1,9 +1,10 @@
 import tkinter as tk
-from tkinter import ttk
-from browser_control.chrome import select_on_scale
+from tkinter import ttk, messagebox
+from chrome import select_on_scale
 import requests
-from browser_control.constants import IP, PORT
-from browser_control import state
+from constants import IP, PORT
+import state
+import traceback
 
 
 def build_decant_tools(parent):
@@ -82,12 +83,43 @@ def build_decant_tools(parent):
 
         def on_select(row):
             # Call scale selection logic
-            if row.get("UM_MATCH", 0):
-                success, msg = select_on_scale(row["LOGISTICS_UNIT"], gtin)
-            else:
-                success, msg = select_on_scale(row["LOGISTICS_UNIT"], "")
-            if not success:
-                msg_var.set(msg)
+            try:
+                lp = row["LOGISTICS_UNIT"]
+                item_to_send = gtin if row.get("UM_MATCH", 0) else ""
+                print(f"[DEBUG] on_select called - LP: {lp}, Item: '{item_to_send}', UM_MATCH: {row.get('UM_MATCH', 0)}")
+                
+                success, msg = select_on_scale(lp, item_to_send)
+                
+                if not success:
+                    # Show full error in popup
+                    messagebox.showerror("Selection Error", f"Failed to select on scale:\n\n{msg}")
+                    
+                    # Show brief message in UI
+                    msg_var.set("Error - see popup")
+                    msg_lbl.config(fg="red")
+                    
+                    # Auto-clear after 3 seconds
+                    def reset_message():
+                        msg_var.set("Enter a gtin and click Search")
+                        msg_lbl.config(fg="white")
+                    frame.after(3000, reset_message)
+                else:
+                    msg_var.set(msg)
+                    msg_lbl.config(fg="white")
+                    
+            except Exception as e:
+                # Handle unexpected errors
+                error_details = f"{type(e).__name__}: {str(e)}\n\n{traceback.format_exc()}"
+                messagebox.showerror("Unexpected Error", error_details)
+                
+                msg_var.set("Error - see popup")
+                msg_lbl.config(fg="red")
+                
+                def reset_message():
+                    msg_var.set("Enter a gtin and click Search")
+                    msg_lbl.config(fg="white")
+                frame.after(3000, reset_message)
+            
             if result_win and result_win.winfo_exists():
                 result_win.destroy()
 

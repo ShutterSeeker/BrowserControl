@@ -1,10 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
-from browser_control import config, state
-from browser_control.constants import DEPARTMENTS, ZOOM_OPTIONS
-from browser_control.settings import save_settings, save_window_geometry
-from browser_control.utils import flash_message
-from browser_control.tab_tools import build_tools_tab
+import config, state
+from constants import DEPARTMENTS, ZOOM_OPTIONS
+from settings import save_settings, save_window_geometry
+from utils import flash_message
+from tab_tools import build_tools_tab
 
 def build_settings_tab(parent):
     frame = tk.Frame(parent, bg="#2b2b2b", padx=10, pady=10)
@@ -29,9 +29,9 @@ def build_settings_tab(parent):
     zoom_cb = ttk.Combobox(frame, textvariable=zoom_var, values=ZOOM_OPTIONS, state="readonly")
     zoom_cb.grid(row=2, column=1, sticky="ew", padx=5)
 
-    # Dark mode checkbox
+    # Dark mode checkbox (for all RF screens)
     dark_cb = tk.Checkbutton(
-        frame, text="Dark Mode (Decant)",
+        frame, text="Dark Mode (RF Screens)",
         variable=dark_var,
         bg="#2b2b2b", fg="white", selectcolor="#2b2b2b"
     )
@@ -42,10 +42,18 @@ def build_settings_tab(parent):
         try:
             if config.cfg["department"] != department_var.get():
                 config.cfg["department"] = department_var.get()
+                # Only rebuild Tools tab if it exists and is currently in the notebook
                 if state.tools_frame:
-                    state.notebook.forget(state.tools_frame)
-                    tools_tab = build_tools_tab()
-                    state.notebook.add(tools_tab, text="Tools")
+                    try:
+                        # Check if the tools_frame is still managed by the notebook
+                        if state.tools_frame in state.notebook.tabs():
+                            state.notebook.forget(state.tools_frame)
+                            tools_tab = build_tools_tab()
+                            state.notebook.add(tools_tab, text="Tools")
+                    except tk.TclError:
+                        # Tools tab was already removed (e.g., after logout)
+                        # Just update the config without rebuilding the tab
+                        pass
 
             config.cfg["zoom_var"] = zoom_var.get()
             config.cfg["darkmode"] = str(dark_var.get())

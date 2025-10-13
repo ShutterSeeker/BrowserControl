@@ -1,17 +1,33 @@
-# Bytecompiled / optimized Python files
+# Python
 __pycache__/
 *.py[cod]
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
 
-# Zoom control build artifact
-zoom_control.exe
-
-# IDE folders
-.vscode/
-
-# Chrome profile data
+# Runtime generated files
+userscripts/*.user.js
+settings.ini
+usernames.json
 profiles/
 
-# backend
-backend/build
-backend/dist
-backend/BackendAPI.spec
+# Build artifacts
+dist/
+build/
+backend/build/
+backend/dist/
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

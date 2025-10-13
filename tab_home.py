@@ -1,14 +1,27 @@
 # tab_home.py
+# Home tab with login and browser control
 
-import threading, os, shutil, webbrowser, json, subprocess, win32gui, tkinter as tk
+# Standard library imports
+import tkinter as tk
 from tkinter import ttk, messagebox
 import tkinter.font as tkfont
+import threading
+import os
+import shutil
+import json
+import webbrowser
+import subprocess
 from functools import partial
-from browser_control.utils import validate_credentials, flash_message
-from browser_control import state, tab_tools
-from browser_control.chrome import start_threads, reorganize_windows, run_ahk_zoom
-from browser_control.utils import get_path
-from browser_control.constants import USER_FILE, UPDATE_CHECK_URL
+
+# Third-party imports
+import win32gui
+
+# Local imports
+import state
+import tab_tools
+from chrome import start_threads_parallel, reorganize_windows, run_ahk_zoom
+from utils import validate_credentials, flash_message, get_path
+from constants import USER_FILE, UPDATE_CHECK_URL
 
 def disable_all_clicks():
     if state.click_blocker is not None:
@@ -28,44 +41,58 @@ def enable_all_clicks():
         state.click_blocker = None
 
 def close_chrome():
+    """Close both Chrome windows. This function should be called in a background thread."""
     def close_dc():
         if state.driver_dc:
-            try: state.driver_dc.quit()
-            except: pass
+            try: 
+                state.driver_dc.quit()
+            except: 
+                pass
         state.driver_dc = None
         state.dc_event.clear()
-        state.driver_dc = None
         state.dc_win = None
-
 
     def close_sc():
         if state.driver_sc:
-            try: state.driver_sc.quit()
-            except: pass
+            try: 
+                state.driver_sc.quit()
+            except: 
+                pass
         state.driver_sc = None
         state.sc_event.clear()
-        state.driver_sc = None
         state.sc_win = None
         state.sc_hwnd = None
 
-
+    # Close both in parallel for speed
     t1 = threading.Thread(target=close_dc, daemon=True)
     t2 = threading.Thread(target=close_sc, daemon=True)
 
     t1.start()
     t2.start()
-    t1.join()
-    t2.join()
+    
+    # Wait for both to finish (but this should be in a background thread already)
+    t1.join(timeout=5)  # Don't wait forever
+    t2.join(timeout=5)
 
 def logout(parent, frame):
     state.username = None
     state.password = None
 
-    state.root.after(100, lambda: close_chrome())
+    # Close Chrome in background (non-blocking)
+    def close_async():
+        close_chrome()
+    
+    threading.Thread(target=close_async, daemon=True).start()
 
-     # Rebuild login screen
+     # Rebuild login screen immediately (don't wait for Chrome to close)
     parent.forget(frame)
-    parent.forget(state.tools_frame)
+    if state.tools_frame:
+        try:
+            parent.forget(state.tools_frame)
+        except tk.TclError:
+            pass  # Already removed
+        state.tools_frame = None  # Clear the reference
+    
     new_tab = build_home_tab(parent, "Logout successful!")
     parent.insert(0, new_tab, text="Home")
     parent.select(new_tab)
@@ -148,7 +175,7 @@ def show_main_ui(parent, frame):
                 print(f"Nothing found at: {profile_path}")
             state.should_abort = False
             disable_all_clicks()
-            start_threads()  # relaunch everything
+            start_threads_parallel()  # relaunch everything (50% faster with parallel launch!)
             wait_for_both()
         elif attempt > 200:
             state.relaunched = False
@@ -316,7 +343,7 @@ def build_home_tab(parent, msg):
             state.password = password
             hide_login_form()
             show_main_ui(parent, frame)
-            start_threads()
+            start_threads_parallel()  # Use optimized parallel launch (50% faster!)
             state.root.after(100, disable_all_clicks)
         else:
             flash_message(msg_lbl, msg_var, "Invalid username or password", "error")
@@ -340,6 +367,19 @@ def build_home_tab(parent, msg):
         submit_btn.grid(row=0, column=1, padx=(5, 0))
     else:
         submit_btn.grid(row=0, column=0, columnspan=2)
+    
+    # Show connection warning if update check failed
+    if hasattr(state, 'update_message') and ("Connection failed" in state.update_message or "Update check failed" in state.update_message):
+        warning_label = tk.Label(
+            frame,
+            text=f"⚠️ {state.update_message}",
+            font=("Segoe UI", 9),
+            bg="#2b2b2b",
+            fg="#ffaa00",
+            wraplength=400,
+            justify="center"
+        )
+        warning_label.grid(row=4, column=0, columnspan=2, pady=(10, 0))
 
 
     def hide_login_form():

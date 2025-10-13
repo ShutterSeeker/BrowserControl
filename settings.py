@@ -1,9 +1,9 @@
 #settings.py
-import os, sys, configparser, pygetwindow as gw
-from browser_control.constants import CONFIG_FILE, SECTION, DEFAULTS
-from browser_control import config
-from browser_control import state
-from browser_control.utils import get_path
+import os, configparser, pygetwindow as gw
+from constants import CONFIG_FILE, SECTION, DEFAULTS
+import config
+import state
+from utils import get_path
 
 settings_path = get_path(CONFIG_FILE)
 

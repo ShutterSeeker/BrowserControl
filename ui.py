@@ -2,38 +2,86 @@
 
 from tkinter import ttk
 import tkinter as tk
-from browser_control import state
+import state
 
 def show_splash():
     splash = tk.Tk()
     splash.overrideredirect(True)
 
-    width, height = 500, 250
+    width, height = 500, 320
     screen_width = splash.winfo_screenwidth()
     screen_height = splash.winfo_screenheight()
     x = (screen_width // 2) - (width // 2)
     y = (screen_height // 2) - (height // 2)
 
+    splash.geometry(f"{width}x{height}+{x}+{y}")
+    splash.configure(bg="#1e1e1e")
+
     # Create border frame
     border_frame = tk.Frame(splash, bg="#1e1e1e")
     border_frame.pack(fill="both", expand=True, padx=6, pady=6)
 
-    # Create inner content frame
-    content_frame = tk.Frame(border_frame, bg="#1e1e1e")
-    content_frame.pack(fill="both", expand=True)
+    # Main container with vertical centering
+    main_container = tk.Frame(border_frame, bg="#1e1e1e")
+    main_container.pack(fill="both", expand=True)
 
-    splash.geometry(f"{width}x{height}+{x}+{y}")
-    splash.configure(bg="#1e1e1e")  # Set outer window background
+    # Center content vertically using place
+    content_frame = tk.Frame(main_container, bg="#1e1e1e")
+    content_frame.place(relx=0.5, rely=0.45, anchor="center")
 
-    label = tk.Label(
-        content_frame,  # Parent changed to content_frame
-        text="Browser Control\nLoading...",
-        font=("Segoe UI", 24, "bold"),
+    # Main title
+    title_label = tk.Label(
+        content_frame,
+        text="Browser Control",
+        font=("Segoe UI", 28, "bold"),
         bg="#1e1e1e",
         fg="white",
         justify="center"
     )
-    label.pack(expand=True)
+    title_label.pack(pady=(0, 20))
+
+    # Progress indicator
+    progress_var = tk.StringVar(value="Initializing...")
+    progress_label = tk.Label(
+        content_frame,
+        textvariable=progress_var,
+        font=("Segoe UI", 11),
+        bg="#1e1e1e",
+        fg="#a0a0a0",
+        justify="center"
+    )
+    progress_label.pack(pady=(0, 5))
+
+    # Status message (for warnings/errors)
+    status_var = tk.StringVar(value="")
+    status_label = tk.Label(
+        content_frame,
+        textvariable=status_var,
+        font=("Segoe UI", 9),
+        bg="#1e1e1e",
+        fg="#ffaa00",
+        justify="center",
+        wraplength=450
+    )
+    status_label.pack(pady=(0, 0))
+
+    # Progress bar at the bottom (thin, pretty, #25adde color)
+    progress_bar_container = tk.Frame(border_frame, bg="#1e1e1e", height=4)
+    progress_bar_container.pack(side="bottom", fill="x", pady=(0, 10))
+    
+    # Background bar
+    progress_bg = tk.Frame(progress_bar_container, bg="#3a3a3a", height=3)
+    progress_bg.pack(fill="x", padx=20)
+    
+    # Actual progress bar (starts at 0 width)
+    progress_bar = tk.Frame(progress_bg, bg="#25adde", height=3)
+    progress_bar.place(x=0, y=0, relwidth=0, relheight=1)
+
+    # Store variables on splash window for easy access
+    splash.progress_var = progress_var
+    splash.status_var = status_var
+    splash.progress_bar = progress_bar
+    splash.progress_bg = progress_bg
 
     return splash
 

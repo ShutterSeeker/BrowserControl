@@ -3,8 +3,8 @@
 import threading
 from pystray import Icon, Menu, MenuItem
 from PIL import Image, ImageDraw
-from browser_control.settings import get_path
-from browser_control import state
+from settings import get_path
+import state
 
 def create_image():
     icon_path = get_path("jasco.ico")

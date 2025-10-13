@@ -4,6 +4,7 @@ import threading
 dc_event = threading.Event()
 sc_event = threading.Event()
 update_available = False
+update_message = "Checking for updates..."  # Status message for update check
 username = None
 password = None
 driver_dc = None

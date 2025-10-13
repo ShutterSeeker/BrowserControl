@@ -3,8 +3,8 @@
 import tkinter as tk
 from tkinter import ttk
 import requests
-from browser_control.constants import IP, PORT
-from browser_control.utils import flash_message
+from constants import IP, PORT
+from utils import flash_message
 
 def show_error_popup(title, message):
     popup = tk.Toplevel()

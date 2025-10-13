@@ -1,9 +1,9 @@
 # tab_tools.py
 
 import tkinter as tk
-from browser_control import state
-from browser_control.tools_slotstax import build_slotstax_tools
-from browser_control.tools_decant import build_decant_tools
+import state
+from tools_slotstax import build_slotstax_tools
+from tools_decant import build_decant_tools
 
 def build_no_tools(parent, department):
     frame = tk.Frame(parent, bg="#2b2b2b", padx=10, pady=10)

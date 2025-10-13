@@ -4,14 +4,40 @@ VERSION = "2.0.2"
 DC_TITLE = "DC - Google Chrome"
 SC_TITLE = "SC - Google Chrome"
 MUTEX_NAME = "BrowserControlMutex"
+
+# GitHub Configuration
 UPDATE_CHECK_URL = "https://api.github.com/repos/ShutterSeeker/BrowserControl/releases/latest"
-RF_URL = "https://scale20.byjasco.com/RF/SignonMenuRF.aspx"
-DECANT_URL = "https://scale20.byjasco.com/RF/DecantProcessing.aspx"
-SLOTSTAX_URL = "https://scale20.byjasco.com/RF/PalletCompleteRF.aspx"
-PACKING_URL = "https://scale20.byjasco.com/scale/trans/packing"
-LABOR_URL = "https://scale20.byjasco.com/RF/JPCILaborTrackingRF.aspx"
+USERSCRIPTS_REPO = "ShutterSeeker/scaleplus-userscripts"
+USERSCRIPTS_BRANCH = "main"
+
+# Userscript Configuration
+# Add/remove userscripts here - they will auto-update from GitHub
+USERSCRIPTS = [
+    "OnContainerCloseCopy.user.js",
+    "RFEnhance.user.js",
+    # Add more userscripts as needed:
+    # "AnotherScript.user.js",
+]
+
+# Scale URLs - Base domains
+SCALE_PROD = "https://scale20.byjasco.com"
+SCALE_QA = "https://scaleqa.byjasco.com"
+DC_URL = "https://dc.byjasco.com"
+
+# Scale URLs - Production
+RF_URL = f"{SCALE_PROD}/RF/SignonMenuRF.aspx"
+DECANT_URL = f"{SCALE_PROD}/RF/DecantProcessing.aspx"
+SLOTSTAX_URL = f"{SCALE_PROD}/RF/PalletCompleteRF.aspx"
+PACKING_URL = f"{SCALE_PROD}/scale/trans/packing"
+CLOSECONTAINER_URL = f"{SCALE_PROD}/scale/trans/closecontainer"
+LABOR_URL = f"{SCALE_PROD}/RF/JPCILaborTrackingRF.aspx"
+
+# File Paths
 USER_FILE = "usernames.json"
 CONFIG_FILE = "settings.ini"
+USERSCRIPTS_DIR = "userscripts"
+
+# Config
 SECTION = "Settings"
 IP = "10.110.2.145"
 PORT = "5000"
@@ -35,8 +61,8 @@ DEFAULTS = {
     'sc_y': '0',
     'sc_width': '1768',
     'sc_height': '1471',
-    'dc_link' : 'https://dc.byjasco.com/LiveMetrics',
-    'sc_link' : 'https://scale20.byjasco.com/RF/SignonMenuRF.aspx',
+    'dc_link' : f'{DC_URL}/LiveMetrics',
+    'sc_link' : RF_URL,
     'dc_state' : 'normal',
     'sc_state' : 'normal'
 }
