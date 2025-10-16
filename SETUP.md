@@ -93,7 +93,7 @@ console=False,  # Change to console=True
 
 ```powershell
 # Copy to distribution folder
-$version = "2.0.2"
+$version = "2.1.0"
 New-Item -ItemType Directory -Path "BrowserControl-v$version"
 Copy-Item "dist\*.exe" "BrowserControl-v$version\"
 Copy-Item "jasco.ico", "settings.ini" "BrowserControl-v$version\"

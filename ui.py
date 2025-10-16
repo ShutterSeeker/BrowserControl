@@ -7,6 +7,12 @@ import state
 def show_splash():
     splash = tk.Tk()
     splash.overrideredirect(True)
+    
+    # Set window icon
+    try:
+        splash.iconbitmap("jasco.ico")
+    except Exception as e:
+        print(f"[WARNING] Could not load splash icon: {e}")
 
     width, height = 500, 320
     screen_width = splash.winfo_screenwidth()
@@ -66,8 +72,19 @@ def show_splash():
     status_label.pack(pady=(0, 0))
 
     # Progress bar at the bottom (thin, pretty, #25adde color)
-    progress_bar_container = tk.Frame(border_frame, bg="#1e1e1e", height=4)
+    progress_bar_container = tk.Frame(border_frame, bg="#1e1e1e")
     progress_bar_container.pack(side="bottom", fill="x", pady=(0, 10))
+    
+    # Percentage label above the progress bar
+    percent_var = tk.StringVar(value="0%")
+    percent_label = tk.Label(
+        progress_bar_container,
+        textvariable=percent_var,
+        font=("Segoe UI", 10),
+        bg="#1e1e1e",
+        fg="#a0a0a0"
+    )
+    percent_label.pack(pady=(0, 5))
     
     # Background bar
     progress_bg = tk.Frame(progress_bar_container, bg="#3a3a3a", height=3)
@@ -82,6 +99,7 @@ def show_splash():
     splash.status_var = status_var
     splash.progress_bar = progress_bar
     splash.progress_bg = progress_bg
+    splash.percent_var = percent_var
 
     return splash
 

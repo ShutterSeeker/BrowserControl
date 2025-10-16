@@ -1,10 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
 block_cipher = None
+spec_root = os.path.abspath(SPECPATH)
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=[spec_root],
     binaries=[],
     datas=[
         ('settings.ini', '.'),
@@ -12,6 +14,26 @@ a = Analysis(
         ('userscripts', 'userscripts'),
     ],
     hiddenimports=[
+        # Local modules
+        'ui',
+        'tray',
+        'tab_home',
+        'tab_settings',
+        'tab_tools',
+        'state',
+        'settings',
+        'config',
+        'constants',
+        'chrome',
+        'launcher',
+        'bookmarks',
+        'utils',
+        'tools_decant',
+        'tools_slotstax',
+        'userscript_updater',
+        'userscript_injector',
+        'retry_utils',
+        # External dependencies
         'selenium',
         'selenium.webdriver',
         'selenium.webdriver.chrome.service',

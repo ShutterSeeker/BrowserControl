@@ -42,6 +42,13 @@ def build_ui():
     root.protocol("WM_DELETE_WINDOW", on_close_window)
     root.geometry(f"+{config.cfg['win_x']}+{config.cfg['win_y']}")
     root.title(f"Jasco v{constants.VERSION}")
+    
+    # Set window icon
+    try:
+        root.iconbitmap("jasco.ico")
+    except Exception as e:
+        print(f"[WARNING] Could not load icon: {e}")
+    
     root.attributes("-topmost", True)
     root.resizable(False, False)
     root.after(100, lambda: root.focus_force())
@@ -68,7 +75,6 @@ def build_ui():
 
 def _load_config(splash):
     """Load configuration - runs in parallel"""
-    splash.progress_var.set("Loading configuration files...")
     import settings
     import config
     config.cfg = settings.load_settings()
@@ -77,7 +83,6 @@ def _load_config(splash):
 
 def _check_updates(splash):
     """Check for updates - runs in parallel"""
-    splash.progress_var.set("Checking for application updates...")
     import utils
     import state
     
@@ -94,13 +99,14 @@ def _check_updates(splash):
 
 
 def _install_chromedriver(splash):
-    """Download/install ChromeDriver - runs in parallel, but only checks weekly"""
+    """Download/install ChromeDriver - only checks once per day"""
     import os
     import time
     import state
     from pathlib import Path
+    import glob
     
-    # Check if we need to update (only once per week)
+    # Check if we need to update (only once per day)
     cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
     last_check_file = cache_dir / ".last_check"
     
@@ -108,12 +114,11 @@ def _install_chromedriver(splash):
     if last_check_file.exists():
         last_check_time = last_check_file.stat().st_mtime
         days_since_check = (time.time() - last_check_time) / 86400  # seconds to days
-        if days_since_check < 7:
+        if days_since_check < 1:
             needs_check = False
-            splash.progress_var.set("Chrome WebDriver up to date")
     
     if needs_check:
-        splash.progress_var.set("Checking Chrome WebDriver updates...")
+        # Do a full check and download if needed
         from webdriver_manager.chrome import ChromeDriverManager
         state.driver_path = ChromeDriverManager().install()
         
@@ -121,9 +126,25 @@ def _install_chromedriver(splash):
         cache_dir.mkdir(parents=True, exist_ok=True)
         last_check_file.touch()
     else:
-        # Just use the existing driver
-        from webdriver_manager.chrome import ChromeDriverManager
-        state.driver_path = ChromeDriverManager().install()
+        # Skip the check - just find the existing driver quickly
+        # Look for chromedriver.exe in the cache directory
+        if cache_dir.exists():
+            driver_patterns = [
+                str(cache_dir / "win64" / "*" / "chromedriver.exe"),
+                str(cache_dir / "win32" / "*" / "chromedriver.exe"),
+                str(cache_dir / "*" / "chromedriver.exe"),
+            ]
+            for pattern in driver_patterns:
+                matches = glob.glob(pattern)
+                if matches:
+                    state.driver_path = matches[0]
+                    print(f"[STARTUP] Using cached ChromeDriver: {state.driver_path}")
+                    break
+        
+        # If we didn't find it, fall back to letting webdriver_manager find it
+        if not hasattr(state, 'driver_path') or not state.driver_path:
+            from webdriver_manager.chrome import ChromeDriverManager
+            state.driver_path = ChromeDriverManager().install()
     
     return "chromedriver"
 
@@ -133,7 +154,6 @@ def _preload_critical_modules(splash):
     Preload modules needed for UI construction.
     These are imported here to avoid blocking during splash screen.
     """
-    splash.progress_var.set("Loading core modules...")
     # Import modules that will be needed immediately when UI starts
     import state
     import config
@@ -148,7 +168,6 @@ def _update_userscripts(splash):
     Check for and download userscript updates from GitHub.
     This runs in parallel with other startup tasks.
     """
-    splash.progress_var.set("Updating userscripts from GitHub...")
     try:
         from userscript_updater import update_all_userscripts
         update_all_userscripts(timeout=3)
@@ -177,57 +196,43 @@ def start():
     splash = ui.show_splash()
     completed_tasks = {'count': 0, 'total': 5}
 
-    def load_everything_parallel():
-        """Load all necessary components in parallel"""
-        # Friendly names for completed tasks
-        task_display_names = {
-            "config": "Configuration loaded",
-            "updates": "Update check complete",
-            "chromedriver": "Chrome WebDriver ready",
-            "modules": "Core modules loaded",
-            "userscripts": "Userscripts updated"
-        }
+    def load_everything_sequential():
+        """Load all necessary components one at a time with progress updates"""
+        tasks = [
+            ("Loading configuration...", _load_config),
+            ("Checking for updates...", _check_updates),
+            ("Setting up Chrome WebDriver...", _install_chromedriver),
+            ("Loading core modules...", _preload_critical_modules),
+            ("Updating userscripts...", _update_userscripts)
+        ]
         
-        # Use ThreadPoolExecutor to run tasks simultaneously
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            # Submit all tasks to run in parallel - pass splash for progress updates
-            futures = {
-                executor.submit(_load_config, splash): "config",
-                executor.submit(_check_updates, splash): "updates", 
-                executor.submit(_install_chromedriver, splash): "chromedriver",
-                executor.submit(_preload_critical_modules, splash): "modules",
-                executor.submit(_update_userscripts, splash): "userscripts"
-            }
-            
-            # Wait for all tasks to complete
-            # as_completed shows progress as tasks finish
-            for future in as_completed(futures):
-                task_name = futures[future]
-                try:
-                    result = future.result()
-                    completed_tasks['count'] += 1
-                    progress_pct = (completed_tasks['count'] / completed_tasks['total']) * 100
-                    print(f"[STARTUP] Completed: {result} ({progress_pct:.0f}%)")
-                    
-                    # Update progress bar and text with actual task name
-                    display_name = task_display_names.get(task_name, task_name)
-                    def update_progress(name=display_name, pct=progress_pct):
-                        splash.progress_var.set(f"{name} ({pct:.0f}%)")
-                        splash.progress_bar.place(relwidth=pct/100, relheight=1)
-                    splash.after(0, update_progress)
-                    
-                except Exception as e:
-                    completed_tasks['count'] += 1
-                    print(f"[ERROR] Failed to load {task_name}: {e}")
-                    # Show error but continue startup
-                    def show_error(name=task_name):
-                        splash.status_var.set(f"⚠️ Warning: {name} failed to load")
-                    splash.after(0, show_error)
+        for i, (message, task_func) in enumerate(tasks, 1):
+            try:
+                # Show what we're currently doing
+                progress_pct = ((i - 1) / completed_tasks['total']) * 100
+                def update_status(msg=message, pct=progress_pct):
+                    splash.progress_var.set(msg)
+                    splash.progress_bar.place(relwidth=pct/100, relheight=1)
+                    splash.percent_var.set(f"{pct:.0f}%")
+                splash.after(0, update_status)
+                
+                # Run the task
+                result = task_func(splash)
+                completed_tasks['count'] += 1
+                print(f"[STARTUP] Completed: {result} ({i}/{completed_tasks['total']})")
+                
+            except Exception as e:
+                completed_tasks['count'] += 1
+                print(f"[ERROR] Task failed: {e}")
+                def show_error(msg=message):
+                    splash.status_var.set(f"⚠️ Warning: {msg.replace('...', '')} failed")
+                splash.after(0, show_error)
         
         # All parallel tasks done - trigger UI build
         def finalize():
             splash.progress_var.set("Starting application...")
             splash.progress_bar.place(relwidth=1.0, relheight=1)
+            splash.percent_var.set("100%")
             splash.after(100, on_load_complete)
         splash.after(0, finalize)
 
@@ -239,7 +244,7 @@ def start():
         build_ui()
 
     # Start loading in background thread
-    threading.Thread(target=load_everything_parallel, daemon=True).start()
+    threading.Thread(target=load_everything_sequential, daemon=True).start()
     
     # Show splash while loading
     splash.mainloop()
