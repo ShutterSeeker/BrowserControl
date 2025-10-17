@@ -13,6 +13,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import ui
 
+# Initialize error reporting system (sets up logging and exception hooks)
+import error_reporter
+from error_reporter import logger
+
 def build_ui():
     """Build the main UI window - imports only what's needed"""
     from tkinter import ttk
@@ -99,53 +103,22 @@ def _check_updates(splash):
 
 
 def _install_chromedriver(splash):
-    """Download/install ChromeDriver - only checks once per day"""
-    import os
-    import time
+    """Download/install ChromeDriver - checks daily and forces update on version mismatch"""
     import state
     from pathlib import Path
-    import glob
+    from error_reporter import logger
     
-    # Check if we need to update (only once per day)
-    cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
-    last_check_file = cache_dir / ".last_check"
     
-    needs_check = True
-    if last_check_file.exists():
-        last_check_time = last_check_file.stat().st_mtime
-        days_since_check = (time.time() - last_check_time) / 86400  # seconds to days
-        if days_since_check < 1:
-            needs_check = False
-    
-    if needs_check:
-        # Do a full check and download if needed
+    try:
         from webdriver_manager.chrome import ChromeDriverManager
+        logger.info("Checking for ChromeDriver updates...")
         state.driver_path = ChromeDriverManager().install()
+        logger.info(f"ChromeDriver ready: {state.driver_path}")
         
         # Update the last check timestamp
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        last_check_file.touch()
-    else:
-        # Skip the check - just find the existing driver quickly
-        # Look for chromedriver.exe in the cache directory
-        if cache_dir.exists():
-            driver_patterns = [
-                str(cache_dir / "win64" / "*" / "chromedriver.exe"),
-                str(cache_dir / "win32" / "*" / "chromedriver.exe"),
-                str(cache_dir / "*" / "chromedriver.exe"),
-            ]
-            for pattern in driver_patterns:
-                matches = glob.glob(pattern)
-                if matches:
-                    state.driver_path = matches[0]
-                    print(f"[STARTUP] Using cached ChromeDriver: {state.driver_path}")
-                    break
-        
-        # If we didn't find it, fall back to letting webdriver_manager find it
-        if not hasattr(state, 'driver_path') or not state.driver_path:
-            from webdriver_manager.chrome import ChromeDriverManager
-            state.driver_path = ChromeDriverManager().install()
-    
+    except Exception as e:
+        logger.error(f"ChromeDriver installation failed: {e}")
+        raise
     return "chromedriver"
 
 
@@ -180,19 +153,22 @@ def _update_userscripts(splash):
 
 def start():
     """
-    Optimized startup using parallel loading with progress indicator.
+    Optimized startup using sequential loading with progress indicator.
     
     Performance strategy:
     1. Show splash screen immediately with progress updates
-    2. Run independent tasks in parallel (config, updates, chromedriver, userscripts)
+    2. Run tasks sequentially with clear progress messages
     3. Display real-time progress and error messages
-    4. Continue startup even if update check fails
-    5. Only preload modules that are used immediately (Python caches imports anyway)
+    4. Log all errors to centralized error reporting system
+    5. Auto-create GitHub issues for critical errors
     
     Note: Heavy imports (win32api, selenium, etc.) happen automatically when their
     modules are first used. Pre-importing them is redundant since Python's import
     cache means they only load once regardless of how many times you import them.
     """
+    logger.info("=" * 60)
+    logger.info("BrowserControl starting...")
+    
     splash = ui.show_splash()
     completed_tasks = {'count': 0, 'total': 5}
 
@@ -219,11 +195,16 @@ def start():
                 # Run the task
                 result = task_func(splash)
                 completed_tasks['count'] += 1
-                print(f"[STARTUP] Completed: {result} ({i}/{completed_tasks['total']})")
+                logger.info(f"Completed: {result} ({i}/{completed_tasks['total']})")
                 
             except Exception as e:
                 completed_tasks['count'] += 1
-                print(f"[ERROR] Task failed: {e}")
+                logger.error(f"Task failed: {message} - {e}")
+                
+                # Report critical startup errors
+                from error_reporter import log_startup_error
+                log_startup_error(e)
+                
                 def show_error(msg=message):
                     splash.status_var.set(f"⚠️ Warning: {msg.replace('...', '')} failed")
                 splash.after(0, show_error)

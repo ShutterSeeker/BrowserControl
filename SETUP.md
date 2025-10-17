@@ -4,19 +4,41 @@ Quick reference for running the code and building executables.
 
 ---
 
-## Running the Code
+## ⚠️ IMPORTANT: First Time Setup
 
-### First Time Setup
-```powershell
-# Clone the repository
-git clone https://github.com/ShutterSeeker/BrowserControl.git
-cd BrowserControl
+### Configure GitHub Token (Required for Error Reporting)
+
+1. **Copy the template file:**
+   ```powershell
+   copy constants.py.template constants.py
+   ```
+
+2. **Get a GitHub Personal Access Token:**
+   - Go to https://github.com/settings/tokens
+   - Click "Generate new token (classic)"
+   - Name: "BrowserControl Error Reporter"
+   - Select scope: `repo`
+   - Click "Generate token"
+   - **Copy the token immediately!**
+
+3. **Edit `constants.py`:**
+   - Replace `"your_github_token_here"` with your actual token
+   - Example: `GITHUB_TOKEN = "ghp_abc123..."`
+
+4. **NEVER commit `constants.py` to Git!**
+   - It's already in `.gitignore`
+   - Only commit `constants.py.template`
+
+---
 
 # Create virtual environment
+```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+```
 
 # Install dependencies
+```powershell
 pip install -r requirements.txt
 ```
 
@@ -40,67 +62,19 @@ python app.py
 pip install pyinstaller==6.11.0
 ```
 
-### Build (Automated)
-
 **Production Build (no console):**
 ```powershell
-.\build.ps1
+pyinstaller --clean BrowserControl.spec
 ```
 
 **Debug Build (with console for troubleshooting):**
 ```powershell
-.\build.ps1 -Debug
+pyinstaller --clean BrowserControlConsole.spec
 ```
 
 **Output:** Executables in `dist/` folder
 - `dist/BrowserControl.exe`
 - `dist/BrowserControlAPI.exe`
-
-> 💡 **Tip:** Use `-Debug` flag to see console output for troubleshooting errors
-
-### Build (Manual)
-```powershell
-# Main application
-pyinstaller BrowserControl.spec
-
-# Backend API
-cd backend
-pyinstaller BrowserControlAPI.spec
-cd ..
-```
-
-**For debug builds**, edit `.spec` files and change:
-```python
-console=False,  # Change to console=True
-```
-
----
-
-## Troubleshooting
-
-**Missing module error?**  
-→ Add to `hiddenimports` in `.spec` file
-
-**Missing files at runtime?**  
-→ Add to `datas` in `.spec` file
-
-**Need console for debugging?**  
-→ Change `console=False` to `console=True` in `.spec` file
-
----
-
-## Distribution Package
-
-```powershell
-# Copy to distribution folder
-$version = "2.1.0"
-New-Item -ItemType Directory -Path "BrowserControl-v$version"
-Copy-Item "dist\*.exe" "BrowserControl-v$version\"
-Copy-Item "jasco.ico", "settings.ini" "BrowserControl-v$version\"
-
-# Create ZIP
-Compress-Archive -Path "BrowserControl-v$version" -DestinationPath "BrowserControl-v$version.zip"
-```
 
 ---
 

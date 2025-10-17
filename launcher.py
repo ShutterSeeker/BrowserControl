@@ -127,7 +127,21 @@ def launch_dc():
             try:
                 state.driver_dc = webdriver.Chrome(service=service_dc, options=opts_dc)
             except Exception as e:
-                print(f"[ERROR] DC Chrome launch failed.", e)
+                print(f"[ERROR] DC Chrome launch failed: {e}")
+                from error_reporter import log_chrome_launch_error
+                from pathlib import Path
+                
+                # Check if it's a version mismatch
+                error_str = str(e)
+                if "This version of ChromeDriver" in error_str:
+                    # Flag that we need to update ChromeDriver
+                    cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    (cache_dir / ".version_mismatch").touch()
+                
+                # Log and report the error
+                log_chrome_launch_error(e)
+                raise
             apply_window_geometry(state.driver_dc, "dc")
             state.driver_dc.get(config.cfg['dc_link'])
 
@@ -197,7 +211,21 @@ def launch_sc():
             try:
                 state.driver_sc = webdriver.Chrome(service=service_sc, options=opts_sc)
             except Exception as e:
-                print(f"[ERROR] DC Chrome launch failed.", e)
+                print(f"[ERROR] Scale Chrome launch failed: {e}")
+                from error_reporter import log_chrome_launch_error
+                from pathlib import Path
+                
+                # Check if it's a version mismatch
+                error_str = str(e)
+                if "This version of ChromeDriver" in error_str:
+                    # Flag that we need to update ChromeDriver
+                    cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    (cache_dir / ".version_mismatch").touch()
+                
+                # Log and report the error
+                log_chrome_launch_error(e)
+                raise
             apply_window_geometry(state.driver_sc, "sc")
             
             # Add ?darkmode parameter if dark mode is enabled

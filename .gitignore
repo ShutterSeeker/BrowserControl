@@ -13,6 +13,9 @@ settings.ini
 usernames.json
 profiles/
 
+# Secrets - DO NOT COMMIT
+constants.py
+
 # Build artifacts
 dist/
 build/
