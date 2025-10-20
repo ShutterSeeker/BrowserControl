@@ -28,6 +28,7 @@ a = Analysis(
         'launcher',
         'bookmarks',
         'utils',
+        'updater',
         'tools_decant',
         'tools_slotstax',
         'userscript_updater',

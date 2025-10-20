@@ -21,7 +21,8 @@ import state
 import tab_tools
 from chrome import start_threads_parallel, reorganize_windows, run_ahk_zoom
 from utils import validate_credentials, flash_message, get_path
-from constants import USER_FILE, UPDATE_CHECK_URL
+from constants import USER_FILE
+from updater import get_latest_release_info, install_update_direct
 
 def disable_all_clicks():
     if state.click_blocker is not None:
@@ -358,10 +359,63 @@ def build_home_tab(parent, msg):
     submit_btn = ttk.Button(button_container, text="Login", command=on_login_submit)
 
     if state.update_available:
-        def open_update_page():
-            webbrowser.open(UPDATE_CHECK_URL)
+        def auto_update():
+            """Download and install update automatically (with fallback)"""
+            # Disable buttons during update
+            update_btn.config(state="disabled", text="Downloading...")
+            submit_btn.config(state="disabled")
+            
+            def download_and_install():
+                try:
+                    # Get release info
+                    release_info = get_latest_release_info()
+                    if not release_info:
+                        state.root.after(0, lambda: messagebox.showerror("Update Failed", "Could not fetch update information."))
+                        state.root.after(0, lambda: update_btn.config(state="normal", text="Update"))
+                        state.root.after(0, lambda: submit_btn.config(state="normal"))
+                        return
+                    
+                    # Direct exe replacement via PowerShell
+                    if release_info.get('exe_url'):
+                        state.root.after(0, lambda: update_btn.config(text="Downloading..."))
+                        
+                        if install_update_direct(release_info['exe_url']):
+                            # Show message and exit after user clicks OK
+                            def exit_app():
+                                messagebox.showinfo(
+                                    "Update Ready",
+                                    f"Installing version {release_info['version']}.\n\n"
+                                    "A PowerShell window will open to complete the update.\n\n"
+                                    "If it doesn't open automatically, run:\n"
+                                    "C:\\BrowserControl\\update_browsercontrol.ps1\n\n"
+                                    "Click OK to close BrowserControl."
+                                )
+                                # Force exit immediately
+                                import sys
+                                sys.exit(0)
+                            
+                            state.root.after(0, exit_app)
+                            return
+                    
+                    # Update failed
+                    state.root.after(0, lambda: messagebox.showerror(
+                        "Update Failed",
+                        "Could not install update.\n\n"
+                        "Please download manually from:\n"
+                        "https://github.com/ShutterSeeker/BrowserControl/releases"
+                    ))
+                    state.root.after(0, lambda: update_btn.config(state="normal", text="Update"))
+                    state.root.after(0, lambda: submit_btn.config(state="normal"))
+                
+                except Exception as e:
+                    state.root.after(0, lambda: messagebox.showerror("Update Failed", f"An error occurred: {str(e)}"))
+                    state.root.after(0, lambda: update_btn.config(state="normal", text="Update"))
+                    state.root.after(0, lambda: submit_btn.config(state="normal"))
+            
+            # Run download in background thread
+            threading.Thread(target=download_and_install, daemon=True).start()
 
-        update_btn = ttk.Button(button_container, text="Update", command=open_update_page, style="Update.TButton")
+        update_btn = ttk.Button(button_container, text="Update", command=auto_update, style="Update.TButton")
         update_btn.grid(row=0, column=0, padx=(0, 5))
 
         submit_btn.grid(row=0, column=1, padx=(5, 0))

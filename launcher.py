@@ -443,31 +443,38 @@ def setup_sc():
 
     labor_value = "Decant" if sel.startswith("DECANT") else sel
 
-    # Wait for dropdown to be present and enabled (reduced from 100s to 10s)
-    dropdown = WebDriverWait(state.driver_sc, 10).until(
-        EC.presence_of_element_located((By.ID, "DropDownListDepartment"))
-    )
-    
-    # Wait for dropdown to be enabled (reduced from 100s to 10s)
-    WebDriverWait(state.driver_sc, 10).until(
-        lambda d: not dropdown.get_attribute("disabled")
-    )
+    # Try to select department from dropdown
+    # If user is already in session, the dropdown won't be present - that's OK, just proceed
+    try:
+        # Wait briefly for dropdown (2s timeout since it should appear immediately if present)
+        dropdown = WebDriverWait(state.driver_sc, 2).until(
+            EC.presence_of_element_located((By.ID, "DropDownListDepartment"))
+        )
+        
+        # Wait for dropdown to be enabled
+        WebDriverWait(state.driver_sc, 1).until(
+            lambda d: not dropdown.get_attribute("disabled")
+        )
 
-    select_element = Select(dropdown)
-    select_element.select_by_visible_text(labor_value)
-    
-    # The dropdown selection causes a postback/reload - wait for it to complete
-    print("[DEBUG] Waiting for page reload after dropdown selection...")
-    WebDriverWait(state.driver_sc, 10).until(
-        lambda d: d.execute_script("return document.readyState") == "complete"
-    )
-    
-    # Re-inject userscript after the page reload
-    print("[DEBUG] Re-injecting userscript after page reload...")
-    from userscript_injector import inject_userscript
-    inject_userscript(state.driver_sc)
-    
-    # Verify re-injection
-    marker_after_reload = state.driver_sc.execute_script("return window.ScalePlusInjected === true;")
-    darkmode_after_reload = state.driver_sc.execute_script("return document.body.classList.contains('rf-dark-mode');")
-    print(f"[DEBUG] After reload - Marker: {marker_after_reload}, Dark mode: {darkmode_after_reload}")
+        select_element = Select(dropdown)
+        select_element.select_by_visible_text(labor_value)
+        
+        # The dropdown selection causes a postback/reload - wait for it to complete
+        print("[DEBUG] Waiting for page reload after dropdown selection...")
+        WebDriverWait(state.driver_sc, 10).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        
+        # Re-inject userscript after the page reload
+        print("[DEBUG] Re-injecting userscript after page reload...")
+        from userscript_injector import inject_userscript
+        inject_userscript(state.driver_sc)
+        
+        # Verify re-injection
+        marker_after_reload = state.driver_sc.execute_script("return window.ScalePlusInjected === true;")
+        darkmode_after_reload = state.driver_sc.execute_script("return document.body.classList.contains('rf-dark-mode');")
+        print(f"[DEBUG] After reload - Marker: {marker_after_reload}, Dark mode: {darkmode_after_reload}")
+        
+    except Exception as e:
+        print(f"[INFO] Department dropdown not found (user may already be in session): {e}")
+        print("[INFO] Proceeding with existing session...")
