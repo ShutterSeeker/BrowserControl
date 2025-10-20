@@ -11,6 +11,8 @@ import json
 import requests
 from tkinter import messagebox
 import threading
+import hashlib
+from pathlib import Path
 
 
 # Set up logger
@@ -23,6 +25,28 @@ console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter('%(levelname)s: %(message)s')
 console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
+
+# Track reported errors to prevent duplicates (per session)
+_reported_errors = set()
+
+def _get_error_hash(title, hostname):
+    """
+    Create a unique hash for an error based on title and hostname.
+    This prevents duplicate issues for the same error on the same computer in the same session.
+    Different computers with the same error will still create separate issues.
+    """
+    error_key = f"{hostname}:{title}"
+    return hashlib.md5(error_key.encode()).hexdigest()
+
+def _has_been_reported(title, hostname):
+    """Check if this error has already been reported this session"""
+    error_hash = _get_error_hash(title, hostname)
+    return error_hash in _reported_errors
+
+def _mark_as_reported(title, hostname):
+    """Mark this error as reported"""
+    error_hash = _get_error_hash(title, hostname)
+    _reported_errors.add(error_hash)
 
 
 def get_system_info():
@@ -103,6 +127,7 @@ def report_critical_error(error_type, error_message, traceback_str=None,
                           create_issue=True, show_popup=True):
     """
     Report a critical error with full logging and optional GitHub issue creation
+    Prevents duplicate issues for the same error on the same computer in the same session.
     
     Args:
         error_type: Type of error (e.g., "ChromeDriver", "LDAP", "Startup")
@@ -115,6 +140,22 @@ def report_critical_error(error_type, error_message, traceback_str=None,
         Dict with report details
     """
     system_info = get_system_info()
+    hostname = system_info['hostname']
+    title = f"{error_type}: {error_message[:80]}"
+    
+    # Check if this error has already been reported this session
+    if _has_been_reported(title, hostname):
+        logger.info(f"Skipping duplicate error report: {title} on {hostname}")
+        return {
+            "error_type": error_type,
+            "error_message": error_message,
+            "traceback": traceback_str,
+            "system_info": system_info,
+            "duplicate": True
+        }
+    
+    # Mark as reported to prevent duplicates
+    _mark_as_reported(title, hostname)
     
     # Log the error
     logger.error(f"CRITICAL ERROR [{error_type}]: {error_message}")
@@ -128,6 +169,7 @@ def report_critical_error(error_type, error_message, traceback_str=None,
         "error_message": error_message,
         "traceback": traceback_str,
         "system_info": system_info,
+        "duplicate": False
     }
     
     # Create GitHub issue in background thread
@@ -162,8 +204,8 @@ def report_critical_error(error_type, error_message, traceback_str=None,
 *This issue was automatically created by the error reporting system.*
 """
             
-            title = f"[Auto-Report] {error_type}: {error_message[:80]}"
-            success, message, url = create_github_issue(title, body)
+            issue_title = f"[Auto-Report] {title}"
+            success, message, url = create_github_issue(issue_title, body)
             
             if success:
                 logger.info(f"✅ GitHub issue created: {url}")
@@ -197,7 +239,10 @@ Please contact support if the issue persists."""
 
 
 def log_chrome_version_mismatch(chromedriver_version, chrome_version):
-    """Specific handler for ChromeDriver version mismatch"""
+    """
+    Specific handler for ChromeDriver version mismatch.
+    Shows a popup instructing user to restart computer instead of relaunch.
+    """
     error_message = (
         f"ChromeDriver version mismatch!\n"
         f"ChromeDriver supports Chrome {chromedriver_version}\n"
@@ -206,12 +251,27 @@ def log_chrome_version_mismatch(chromedriver_version, chrome_version):
     
     traceback_str = traceback.format_exc()
     
+    # Custom popup for version mismatch - tell user to restart
+    try:
+        messagebox.showerror(
+            "ChromeDriver Update Required",
+            f"ChromeDriver version mismatch detected:\n\n"
+            f"ChromeDriver: {chromedriver_version}\n"
+            f"Chrome Browser: {chrome_version}\n\n"
+            f"Please RESTART YOUR COMPUTER to update ChromeDriver.\n\n"
+            f"Do NOT relaunch the app until after restarting.\n\n"
+            f"An error report has been submitted automatically."
+        )
+    except:
+        logger.error("Could not show version mismatch popup")
+    
+    # Report the error (but don't show the default popup since we showed custom one)
     return report_critical_error(
         error_type="ChromeDriver Version Mismatch",
         error_message=error_message,
         traceback_str=traceback_str,
         create_issue=True,
-        show_popup=True
+        show_popup=False  # We already showed custom popup above
     )
 
 
