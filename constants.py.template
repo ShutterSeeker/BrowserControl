@@ -37,7 +37,6 @@ DECANT_URL = f"{SCALE_PROD}/RF/DecantProcessing.aspx"
 SLOTSTAX_URL = f"{SCALE_PROD}/RF/PalletCompleteRF.aspx"
 PACKING_URL = f"{SCALE_PROD}/scale/trans/packing"
 CLOSECONTAINER_URL = f"{SCALE_PROD}/scale/trans/closecontainer"
-LABOR_URL = f"{SCALE_PROD}/RF/JPCILaborTrackingRF.aspx"
 
 # File Paths
 USER_FILE = "usernames.json"
@@ -57,7 +56,7 @@ DEPARTMENTS = [
 DEFAULTS = {
     'department': 'DECANT.WS.5',
     'zoom_var': '200',
-    'darkmode': 'True',
+    'theme': 'dark',
     'win_x': '41',
     'win_y': '1210',
     'dc_x': '1747',
@@ -68,8 +67,6 @@ DEFAULTS = {
     'sc_y': '0',
     'sc_width': '1768',
     'sc_height': '1471',
-    'dc_link' : f'{DC_URL}/LiveMetrics',
-    'sc_link' : RF_URL,
     'dc_state' : 'normal',
     'sc_state' : 'normal'
 }

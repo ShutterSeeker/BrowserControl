@@ -32,6 +32,16 @@ hashlib.new = _patched_hashlib_new
 from ldap3 import Connection, NTLM
 import tkinter as tk
 
+def get_activity_type(department: str) -> str:
+    """Convert department name to ActivityType for MetricsLive URL.
+    
+    DECANT.WS.* departments become just 'Decant'
+    All other departments pass through unchanged
+    """
+    if department.startswith("DECANT.WS"):
+        return "Decant"
+    return department
+
 def update_available():
     """
     Check if an update is available with retry logic.

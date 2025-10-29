@@ -43,6 +43,38 @@ def load_settings():
     for key, val in DEFAULTS.items():
         if key not in section:
             section[key] = val
+    
+    # One-time cleanup: Remove dc_link and sc_link from config (URLs now come from constants)
+    needs_save = False
+    if 'dc_link' in section:
+        print(f"[MIGRATION] Removing dc_link from config (now using constants)")
+        del section['dc_link']
+        needs_save = True
+    if 'sc_link' in section:
+        print(f"[MIGRATION] Removing sc_link from config (now using constants)")
+        del section['sc_link']
+        needs_save = True
+    
+    # Migrate darkmode (True/False) to theme (dark/light)
+    if 'darkmode' in section:
+        old_value = section['darkmode']
+        # Convert True/False to dark/light
+        if old_value.lower() == 'true':
+            new_value = 'dark'
+        elif old_value.lower() == 'false':
+            new_value = 'light'
+        else:
+            new_value = 'dark'  # Default
+        section['theme'] = new_value
+        del section['darkmode']
+        print(f"[MIGRATION] Converted darkmode='{old_value}' to theme='{new_value}'")
+        needs_save = True
+    
+    if needs_save:
+        with open(settings_path, 'w') as f:
+            config.write(f)
+        print(f"[MIGRATION] Config cleaned up")
+    
     return section
 
 def save_position(x, y):

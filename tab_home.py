@@ -15,9 +15,11 @@ from functools import partial
 
 # Third-party imports
 import win32gui
+import requests
 
 # Local imports
 import state
+import config
 import tab_tools
 from chrome import start_threads_parallel, reorganize_windows, run_ahk_zoom
 from utils import validate_credentials, flash_message, get_path
@@ -78,6 +80,7 @@ def close_chrome():
 def logout(parent, frame):
     state.username = None
     state.password = None
+    state.logged_in = False  # Clear logged in state
 
     # Close Chrome in background (non-blocking)
     def close_async():
@@ -93,6 +96,10 @@ def logout(parent, frame):
         except tk.TclError:
             pass  # Already removed
         state.tools_frame = None  # Clear the reference
+    
+    # Refresh settings tab to hide user-specific settings
+    if state.settings_frame and hasattr(state.settings_frame, 'load_user_settings'):
+        state.settings_frame.load_user_settings()
     
     new_tab = build_home_tab(parent, "Logout successful!")
     parent.insert(0, new_tab, text="Home")
@@ -342,10 +349,39 @@ def build_home_tab(parent, msg):
             remember_username(username)
             state.username = username
             state.password = password
+            state.logged_in = True  # Set logged in state
+            
+            # Fetch user settings BEFORE launching browsers
+            try:
+                from constants import IP, PORT
+                resp = requests.post(
+                    f"http://{IP}:{PORT}/get_user_settings",
+                    json={"username": username},
+                    timeout=5
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                
+                # Update config with user settings BEFORE browser launch
+                user_zoom = data.get("zoom", "200")
+                user_theme = data.get("theme", "dark")
+                
+                state.zoom_var.set(user_zoom)
+                config.cfg["zoom_var"] = user_zoom
+                config.cfg["theme"] = user_theme
+                
+                print(f"[LOGIN] Loaded user settings: theme={user_theme}, zoom={user_zoom}")
+            except Exception as e:
+                print(f"[WARNING] Failed to load user settings, using defaults: {e}")
+            
             hide_login_form()
             show_main_ui(parent, frame)
             start_threads_parallel()  # Use optimized parallel launch (50% faster!)
             state.root.after(100, disable_all_clicks)
+            
+            # Refresh settings tab to show user-specific settings
+            if state.settings_frame and hasattr(state.settings_frame, 'load_user_settings'):
+                state.root.after(200, state.settings_frame.load_user_settings)
         else:
             flash_message(msg_lbl, msg_var, "Invalid username or password", "error")
             password_entry.focus_set()

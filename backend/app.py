@@ -129,6 +129,77 @@ def lookup_lp_by_gtin():
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/get_user_settings", methods=["POST"])
+def get_user_settings():
+    """
+    Get user-specific settings from USER_PROFILE table.
+    
+    USER_DEF3 = theme ('light' or 'dark')
+    USER_DEF4 = zoom level ('150', '200', '250', '300')
+    """
+    data = request.json
+    username = data.get("username")
+
+    if not username:
+        return jsonify({"error": "Missing username"}), 400
+
+    try:
+        sql = """
+        SELECT 
+            USER_DEF3 AS theme,
+            USER_DEF4 AS zoom
+        FROM USER_PROFILE 
+        WHERE USER_NAME = ?
+        """
+        
+        results = execute_query(sql, (username,))
+        
+        if results and len(results) > 0:
+            user_settings = results[0]
+            # Provide defaults if NULL
+            return jsonify({
+                "theme": user_settings.get("theme") or "dark",
+                "zoom": user_settings.get("zoom") or "200"
+            })
+        else:
+            return jsonify({"error": "User not found"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/update_user_settings", methods=["POST"])
+def update_user_settings():
+    """
+    Update user-specific settings in USER_PROFILE table.
+    
+    USER_DEF3 = theme ('light' or 'dark')
+    USER_DEF4 = zoom level ('150', '200', '250', '300')
+    """
+    data = request.json
+    username = data.get("username")
+    theme = data.get("theme")
+    zoom = data.get("zoom")
+
+    if not username:
+        return jsonify({"error": "Missing username"}), 400
+
+    try:
+        sql = """
+        UPDATE USER_PROFILE 
+        SET USER_DEF3 = ?, USER_DEF4 = ?
+        WHERE USER_NAME = ?
+        """
+        
+        rows_affected = execute_update(sql, (theme, zoom, username))
+        
+        if rows_affected > 0:
+            return jsonify({"message": "Settings updated successfully", "rows_affected": rows_affected})
+        else:
+            return jsonify({"error": "User not found or no changes made"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
 if __name__ == "__main__":
     from db_pool import close_connection_pool
@@ -138,6 +209,8 @@ if __name__ == "__main__":
     print("  - POST /update_pallet_arrived_by_tote")
     print("  - POST /select_pallet_arrived_by_tote")
     print("  - POST /lookup_lp_by_gtin")
+    print("  - POST /get_user_settings")
+    print("  - POST /update_user_settings")
     print("  - GET  /health (pool statistics)")
     
     # Start Flask in a thread so the tray doesn't block it

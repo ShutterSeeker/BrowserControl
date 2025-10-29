@@ -18,8 +18,9 @@ from bookmarks import generate_bookmarks
 from utils import resource_path
 import config
 import state
-from constants import RF_URL, DECANT_URL, PACKING_URL, SLOTSTAX_URL, LABOR_URL
+from constants import RF_URL, DECANT_URL, PACKING_URL, SLOTSTAX_URL
 from userscript_injector import setup_auto_injection
+from utils import get_activity_type
 
 def cleanup_chrome_processes():
     """
@@ -34,7 +35,7 @@ def cleanup_chrome_processes():
                 # Kill Chrome processes related to our profiles
                 if 'chrome' in name or 'chromedriver' in name:
                     cmdline = proc.info.get('cmdline', [])
-                    if cmdline and any('LiveMetricsProfile' in str(arg) or 'ScaleProfile' in str(arg) for arg in cmdline):
+                    if cmdline and any('MetricsLiveProfile' in str(arg) or 'ScaleProfile' in str(arg) for arg in cmdline):
                         print(f"[CLEANUP] Killing stale process: {proc.info['name']} (PID: {proc.info['pid']})")
                         proc.kill()
                         proc.wait(timeout=3)
@@ -168,7 +169,7 @@ def launch_dc():
         
         for attempt in range(max_retries):
             try:
-                dc_profile = get_profile_path("LiveMetricsProfile")
+                dc_profile = get_profile_path("MetricsLiveProfile")
                 os.makedirs(dc_profile, exist_ok=True)
                 
                 # On retry, cleanup stale processes and lock files
@@ -218,7 +219,14 @@ def launch_dc():
                     raise
                     
                 apply_window_geometry(state.driver_dc, "dc")
-                state.driver_dc.get(config.cfg['dc_link'])
+                
+                # Build MetricsLive URL with ActivityType from department
+                from constants import DC_URL
+                activity_type = get_activity_type(config.cfg["department"])
+                dc_url = f"{DC_URL}/MetricsLive?ActivityType={activity_type}"
+                print(f"[DEBUG] Navigating to MetricsLive with ActivityType: {activity_type}")
+                
+                state.driver_dc.get(dc_url)
 
                 # Reduced timeout from 100s to 15s (more than enough for page load)
                 WebDriverWait(state.driver_dc, 15).until(
@@ -243,11 +251,13 @@ def launch_dc():
     return chrome_ready
 
 def setup_dc():
+    """Login to DC and set theme. Browser will auto-redirect to originally requested URL."""
     if state.should_abort:
         print("[INFO] setup_dc aborted early.")
         return
+    
     try:
-        # Reduced timeouts from 100s to 10s each (more than enough for form elements)
+        # Login to DC (browser will auto-redirect to the originally requested URL after login)
         WebDriverWait(state.driver_dc, 10).until(
                     EC.presence_of_element_located((By.ID, "MainContent_txtUsername"))
                 ).send_keys(state.username)
@@ -257,11 +267,23 @@ def setup_dc():
         WebDriverWait(state.driver_dc, 10).until(
             EC.element_to_be_clickable((By.ID, "MainContent_btnLogin"))
         ).click()
+        
+        # Wait for redirect to complete
+        WebDriverWait(state.driver_dc, 10).until(
+            lambda d: "login" not in d.current_url.lower()
+        )
+        
+        # Set theme based on theme setting
+        theme = config.cfg.get("theme", "dark")
+        print(f"[DEBUG] Setting DC theme to: {theme}")
+        state.driver_dc.execute_script(f"localStorage.setItem('theme', '{theme}');")
+        
+        # Refresh to apply theme
+        state.driver_dc.refresh()
+        
     except Exception as e:
         print(f"[ERROR] setup_dc failed: {e}")
         return
-    
-    state.driver_dc.get(config.cfg['dc_link'])
     
 def launch_sc():
     if state.should_abort:
@@ -334,9 +356,9 @@ def launch_sc():
                     
                 apply_window_geometry(state.driver_sc, "sc")
                 
-                # Add ?darkmode parameter if dark mode is enabled
-                sc_url = config.cfg['sc_link']
-                if config.cfg.get("darkmode", "False").lower() == "true":
+                # Navigate to RF login page with dark mode parameter if enabled
+                sc_url = RF_URL
+                if config.cfg.get("theme", "dark") == "dark":
                     # Add ?darkmode parameter (handle existing query params)
                     separator = "&" if "?" in sc_url else "?"
                     sc_url = f"{sc_url}{separator}darkmode"
@@ -416,7 +438,7 @@ def setup_sc():
     if sel.startswith("DECANT.WS"):
         # Go to DecantProcessing
         decant_url = DECANT_URL
-        if config.cfg.get("darkmode", "False").lower() == "true":
+        if config.cfg.get("theme", "dark") == "dark":
             # Add ?darkmode parameter (handle existing query params)
             separator = "&" if "?" in decant_url else "?"
             decant_url = f"{decant_url}{separator}darkmode"
@@ -431,7 +453,7 @@ def setup_sc():
     elif sel.startswith("PalletizingStation"):
         # Go to PalletComplete page
         slotstax_url = SLOTSTAX_URL
-        if config.cfg.get("darkmode", "False").lower() == "true":
+        if config.cfg.get("theme", "dark") == "dark":
             separator = "&" if "?" in slotstax_url else "?"
             slotstax_url = f"{slotstax_url}{separator}darkmode"
             print(f"[DEBUG] Dark mode enabled for SlotStax, opening: {slotstax_url}")
@@ -469,124 +491,3 @@ def setup_sc():
 
     else:
         print("Unrecognized department:", sel)
-
-    # Modified Labor department selection code
-    state.driver_sc.execute_script("window.open('');")
-    state.driver_sc.switch_to.window(state.driver_sc.window_handles[-1])
-    
-    labor_url = LABOR_URL
-    if config.cfg.get("darkmode", "False").lower() == "true":
-        separator = "&" if "?" in labor_url else "?"
-        labor_url = f"{labor_url}{separator}darkmode"
-        print(f"[DEBUG] Dark mode enabled for Labor, opening: {labor_url}")
-    
-    state.driver_sc.get(labor_url)
-    
-    # Wait for page load (reduced from 100s to 15s)
-    WebDriverWait(state.driver_sc, 15).until(
-        lambda d: d.execute_script("return document.readyState") == "complete"
-    )
-    
-    # Inject userscript into Labor tab
-    print("[DEBUG] ========== LABOR TAB INJECTION ==========")
-    print(f"[DEBUG] Number of open windows: {len(state.driver_sc.window_handles)}")
-    print(f"[DEBUG] All window handles: {state.driver_sc.window_handles}")
-    print(f"[DEBUG] Current window handle: {state.driver_sc.current_window_handle}")
-    
-    try:
-        # Check URL and page title to confirm we're on the Labor tab
-        current_url = state.driver_sc.current_url
-        page_title = state.driver_sc.title
-        print(f"[DEBUG] Current URL: {current_url}")
-        print(f"[DEBUG] Page title: {page_title}")
-        
-        # Verify this is actually a Labor page
-        if "JPCILaborTrackingRF" not in current_url:
-            print(f"[WARNING] ⚠️ NOT on Labor tab! URL doesn't contain JPCILaborTrackingRF")
-        
-        # Now inject the userscript
-        from userscript_injector import inject_userscript
-        print(f"[DEBUG] About to inject into window with URL: {state.driver_sc.current_url}")
-        inject_result = inject_userscript(state.driver_sc)
-        print(f"[DEBUG] Userscript injection result: {'SUCCESS' if inject_result else 'FAILED'}")
-        
-        # Double-check we're still on the Labor tab after injection
-        post_inject_url = state.driver_sc.current_url
-        print(f"[DEBUG] After injection, current URL: {post_inject_url}")
-        
-        if post_inject_url != current_url:
-            print(f"[ERROR] ⚠️⚠️⚠️ WINDOW SWITCHED DURING INJECTION! Was on {current_url}, now on {post_inject_url}")
-        
-        # Verify injection by checking for the marker
-        marker_present = state.driver_sc.execute_script("return window.ScalePlusInjected === true;")
-        verification_url = state.driver_sc.current_url
-        print(f"[DEBUG] Injection marker present: {marker_present} (checking on {verification_url})")
-        
-        # Check if dark mode script initialized
-        has_darkmode_styles = state.driver_sc.execute_script("return document.getElementById('rf-dark-mode-styles') !== null;")
-        print(f"[DEBUG] Dark mode styles element present: {has_darkmode_styles}")
-        
-        # Check if body has dark mode class
-        has_darkmode_class = state.driver_sc.execute_script("return document.body.classList.contains('rf-dark-mode');")
-        print(f"[DEBUG] Body has rf-dark-mode class: {has_darkmode_class}")
-        
-        # Check actual background color to see if CSS is applied
-        bg_color = state.driver_sc.execute_script("return window.getComputedStyle(document.body).backgroundColor;")
-        print(f"[DEBUG] Body background color: {bg_color}")
-        
-        # Set up CDP auto-injection for this window (so it persists across page navigations)
-        print("[DEBUG] Setting up CDP auto-injection for Labor tab...")
-        try:
-            from userscript_injector import setup_auto_injection
-            cdp_success = setup_auto_injection(state.driver_sc)
-            if cdp_success:
-                print("[SUCCESS] ✅ CDP auto-injection enabled for Labor tab!")
-            else:
-                print("[WARNING] ⚠️ CDP auto-injection failed for Labor tab")
-        except Exception as cdp_error:
-            print(f"[WARNING] Could not setup CDP for Labor tab: {cdp_error}")
-        
-    except Exception as e:
-        print(f"[ERROR] Failed to inject into Labor tab: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    print("[DEBUG] ==========================================")
-
-    labor_value = "Decant" if sel.startswith("DECANT") else sel
-
-    # Try to select department from dropdown
-    # If user is already in session, the dropdown won't be present - that's OK, just proceed
-    try:
-        # Wait briefly for dropdown (2s timeout since it should appear immediately if present)
-        dropdown = WebDriverWait(state.driver_sc, 2).until(
-            EC.presence_of_element_located((By.ID, "DropDownListDepartment"))
-        )
-        
-        # Wait for dropdown to be enabled
-        WebDriverWait(state.driver_sc, 1).until(
-            lambda d: not dropdown.get_attribute("disabled")
-        )
-
-        select_element = Select(dropdown)
-        select_element.select_by_visible_text(labor_value)
-        
-        # The dropdown selection causes a postback/reload - wait for it to complete
-        print("[DEBUG] Waiting for page reload after dropdown selection...")
-        WebDriverWait(state.driver_sc, 10).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
-        )
-        
-        # Re-inject userscript after the page reload
-        print("[DEBUG] Re-injecting userscript after page reload...")
-        from userscript_injector import inject_userscript
-        inject_userscript(state.driver_sc)
-        
-        # Verify re-injection
-        marker_after_reload = state.driver_sc.execute_script("return window.ScalePlusInjected === true;")
-        darkmode_after_reload = state.driver_sc.execute_script("return document.body.classList.contains('rf-dark-mode');")
-        print(f"[DEBUG] After reload - Marker: {marker_after_reload}, Dark mode: {darkmode_after_reload}")
-        
-    except Exception as e:
-        print(f"[INFO] Department dropdown not found (user may already be in session): {e}")
-        print("[INFO] Proceeding with existing session...")

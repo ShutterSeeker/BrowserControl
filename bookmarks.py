@@ -5,7 +5,7 @@ import sys
 import time
 import uuid
 import json
-from utils import resource_path
+from utils import resource_path, get_activity_type
 
 
 def get_profile_data_path(profile: str, filename: str) -> str:
@@ -48,7 +48,7 @@ def show_bookmarks_bar(profile: str) -> None:
 def generate_bookmarks(department: str):
     """
     Create Chrome bookmark files and ensure the bookmarks bar is shown
-    for both ScaleProfile and LiveMetricsProfile based on department.
+    for both ScaleProfile and MetricsLiveProfile based on department.
     """
     # Common link for both profiles
     base_links = [{"name": "RF", "url": "https://scale20.byjasco.com/RF/SignonMenuRF.aspx"}]
@@ -73,12 +73,14 @@ def generate_bookmarks(department: str):
             {"name": "Shipping container", "url": "https://scale20.byjasco.com/scale/insights/4026"},
         ]
 
-    # Extras for LiveMetricsProfile (extend if needed)
-    live_extras = [{"name": "Live metrics", "url": "https://dc.byjasco.com/LiveMetrics"}]
+    # Extras for MetricsLiveProfile (extend if needed)
+    # Convert department to ActivityType (DECANT.WS.* becomes "Decant")
+    activity_type = get_activity_type(department)
+    live_extras = [{"name": "Metrics live", "url": f"https://dc.byjasco.com/MetricsLive?ActivityType={activity_type}"}]
 
     profiles = [
         ("ScaleProfile", base_links + scale_extras),
-        ("LiveMetricsProfile", live_extras),
+        ("MetricsLiveProfile", live_extras),
     ]
 
     for profile, links in profiles:

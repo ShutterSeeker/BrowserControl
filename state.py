@@ -21,3 +21,5 @@ notebook = None
 tools_frame = None
 click_blocker = None
 relaunched = False
+settings_frame = None  # Reference to settings tab for refreshing after login
+logged_in = False  # Track login state for user-specific settings

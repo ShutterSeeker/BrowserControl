@@ -48,8 +48,8 @@ def launch_dc_thread():
             window_title=DC_TITLE
         )
         
-        if config.cfg["dc_link"] == "https://dc.byjasco.com/LiveMetrics":
-            setup_dc()
+        # Always setup DC (login and navigate to MetricsLive)
+        setup_dc()
         
         set_window_state(state.dc_win, config.cfg["dc_state"])
         state.dc_event.set()
@@ -82,8 +82,8 @@ def launch_sc_thread():
         
         state.sc_hwnd = state.sc_win._hWnd
         
-        if config.cfg["sc_link"] == "https://scale20.byjasco.com/RF/SignonMenuRF.aspx":
-            setup_sc()
+        # Always setup SC (login and navigate to department page)
+        setup_sc()
         
         set_window_state(state.sc_win, config.cfg["sc_state"])
         state.sc_event.set()
@@ -131,8 +131,8 @@ def start_threads_parallel():
                 timeout=5.0,
                 window_title=DC_TITLE
             )
-            if config.cfg["dc_link"] == "https://dc.byjasco.com/LiveMetrics":
-                setup_dc()
+            # Always setup DC (login and navigate to MetricsLive)
+            setup_dc()
             set_window_state(state.dc_win, config.cfg["dc_state"])
             state.dc_event.set()
         except TimeoutError as e:
@@ -148,8 +148,8 @@ def start_threads_parallel():
                 window_title=SC_TITLE
             )
             state.sc_hwnd = state.sc_win._hWnd
-            if config.cfg["sc_link"] == "https://scale20.byjasco.com/RF/SignonMenuRF.aspx":
-                setup_sc()
+            # Always setup SC (login and navigate to department page)
+            setup_sc()
             set_window_state(state.sc_win, config.cfg["sc_state"])
             state.sc_event.set()
         except TimeoutError as e:

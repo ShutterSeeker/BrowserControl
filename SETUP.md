@@ -70,17 +70,6 @@ python app.py
 
 ## Building Releases
 
-### Quick Build (Executable + Installer)
-
-See [BUILD_GUIDE.md](BUILD_GUIDE.md) for complete instructions.
-
-```powershell
-# Build everything (requires Inno Setup)
-.\build_release.ps1
-```
-
-### Manual Build (Executable Only)
-
 **Install PyInstaller:**
 ```powershell
 pip install pyinstaller==6.16.0
@@ -93,40 +82,13 @@ pyinstaller --clean BrowserControl.spec
 
 Output: `dist\BrowserControl.exe`
 
-### Building the Installer
-
-1. **Install Inno Setup 6**: https://jrsoftware.org/isdl.php
-2. **Build executable first** (see above)
-3. **Compile installer**:
-   ```powershell
-   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" BrowserControl.iss
-   ```
-
-Output: `dist\BrowserControlSetup_X.X.X.exe`
-
-**See [BUILD_GUIDE.md](BUILD_GUIDE.md) for release process and testing.**
+**Production Build (no console):**
+```powershell
+cd backend
+pyinstaller --clean BrowserControlAPI.spec
+```
 
 ---
-
-## Project Structure
-
-```
-BrowserControl/
-├── main.py                    # Application entry point
-├── ui.py                      # Main window UI
-├── tab_home.py                # Login tab
-├── tab_settings.py            # Settings tab
-├── tab_tools.py               # Tools tab
-├── launcher.py                # Browser launch logic
-├── chrome.py                  # Chrome automation
-├── updater.py                 # Automatic update system
-├── error_reporter.py          # GitHub issue creation
-├── constants.py               # Configuration (gitignored)
-├── constants.py.template      # Template for setup
-├── BrowserControl.spec        # PyInstaller config
-├── BrowserControl.iss         # Inno Setup config
-└── build_release.ps1          # Automated build script
-```
 
 **Debug Build (with console for troubleshooting):**
 ```powershell
