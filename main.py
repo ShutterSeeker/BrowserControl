@@ -109,7 +109,7 @@ def _install_chromedriver(splash):
     from error_reporter import logger
     import zipfile
     import shutil
-    import requests.exceptions
+    import requests
     from retry_utils import retry_with_backoff
     
     def clear_chromedriver_cache():
@@ -130,7 +130,7 @@ def _install_chromedriver(splash):
         )
         # Clear cache on BadZipFile to ensure fresh download on next attempt
         if isinstance(exc, zipfile.BadZipFile):
-            logger.error(f"Corrupted ChromeDriver download detected")
+            logger.error(f"Corrupted ChromeDriver download detected: {exc}")
             clear_chromedriver_cache()
     
     @retry_with_backoff(
