@@ -107,17 +107,49 @@ def _install_chromedriver(splash):
     import state
     from pathlib import Path
     from error_reporter import logger
+    import zipfile
+    import shutil
+    from retry_utils import retry_with_backoff
     
+    def clear_chromedriver_cache():
+        """Clear webdriver_manager cache to force fresh download"""
+        cache_dir = Path.home() / '.wdm'
+        if cache_dir.exists():
+            logger.warning(f"Clearing corrupted ChromeDriver cache: {cache_dir}")
+            try:
+                shutil.rmtree(cache_dir)
+                logger.info("Cache cleared successfully")
+            except Exception as e:
+                logger.error(f"Failed to clear cache: {e}")
+    
+    @retry_with_backoff(
+        max_attempts=3,
+        initial_delay=1.0,
+        backoff_factor=2.0,
+        max_delay=5.0,
+        exceptions=(zipfile.BadZipFile, Exception),
+        on_retry=lambda attempt, exc: logger.warning(
+            f"ChromeDriver installation attempt {attempt} failed: {exc}. Retrying..."
+        )
+    )
+    def install_chromedriver_with_retry():
+        """Install ChromeDriver with retry logic and cache clearing on corruption"""
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            return ChromeDriverManager().install()
+        except zipfile.BadZipFile as e:
+            logger.error(f"Corrupted ChromeDriver download detected: {e}")
+            clear_chromedriver_cache()
+            raise
     
     try:
-        from webdriver_manager.chrome import ChromeDriverManager
         logger.info("Checking for ChromeDriver updates...")
-        state.driver_path = ChromeDriverManager().install()
+        state.driver_path = install_chromedriver_with_retry()
         logger.info(f"ChromeDriver ready: {state.driver_path}")
         
         # Update the last check timestamp
     except Exception as e:
-        logger.error(f"ChromeDriver installation failed: {e}")
+        logger.error(f"ChromeDriver installation failed after all retries: {e}")
         raise
     return "chromedriver"
 
