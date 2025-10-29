@@ -109,6 +109,7 @@ def _install_chromedriver(splash):
     from error_reporter import logger
     import zipfile
     import shutil
+    import requests.exceptions
     from retry_utils import retry_with_backoff
     
     def clear_chromedriver_cache():
@@ -122,25 +123,28 @@ def _install_chromedriver(splash):
             except Exception as e:
                 logger.error(f"Failed to clear cache: {e}")
     
+    def on_retry_callback(attempt, exc):
+        """Handle retry attempts - clear cache on BadZipFile before retrying"""
+        logger.warning(
+            f"ChromeDriver installation attempt {attempt} failed: {exc}. Retrying..."
+        )
+        # Clear cache on BadZipFile to ensure fresh download on next attempt
+        if isinstance(exc, zipfile.BadZipFile):
+            logger.error(f"Corrupted ChromeDriver download detected")
+            clear_chromedriver_cache()
+    
     @retry_with_backoff(
         max_attempts=3,
         initial_delay=1.0,
         backoff_factor=2.0,
         max_delay=5.0,
-        exceptions=(zipfile.BadZipFile, Exception),
-        on_retry=lambda attempt, exc: logger.warning(
-            f"ChromeDriver installation attempt {attempt} failed: {exc}. Retrying..."
-        )
+        exceptions=(zipfile.BadZipFile, requests.exceptions.RequestException, OSError),
+        on_retry=on_retry_callback
     )
     def install_chromedriver_with_retry():
         """Install ChromeDriver with retry logic and cache clearing on corruption"""
-        try:
-            from webdriver_manager.chrome import ChromeDriverManager
-            return ChromeDriverManager().install()
-        except zipfile.BadZipFile as e:
-            logger.error(f"Corrupted ChromeDriver download detected: {e}")
-            clear_chromedriver_cache()
-            raise
+        from webdriver_manager.chrome import ChromeDriverManager
+        return ChromeDriverManager().install()
     
     try:
         logger.info("Checking for ChromeDriver updates...")
