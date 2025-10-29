@@ -24,6 +24,7 @@ Pillow==11.0.0
 pywin32==308
 pygetwindow==0.0.9
 pyautogui==0.9.54
+psutil==6.1.0
 
 # Build Tools (for creating executables)
 # Install separately: pip install pyinstaller==6.11.0

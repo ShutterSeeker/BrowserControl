@@ -6,7 +6,7 @@
 #   - Reduced timeouts from 100s to 10-15s
 #   - Parallel DC & SC driver initialization (50% faster!)
 
-import threading, os, sys
+import threading, os, sys, time, subprocess, psutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from selenium import webdriver
 from threading import Event
@@ -20,6 +20,53 @@ import config
 import state
 from constants import RF_URL, DECANT_URL, PACKING_URL, SLOTSTAX_URL, LABOR_URL
 from userscript_injector import setup_auto_injection
+
+def cleanup_chrome_processes():
+    """
+    Kill any stale Chrome/ChromeDriver processes that might be holding profile locks.
+    This prevents "user data directory is already in use" errors.
+    """
+    try:
+        killed_count = 0
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                name = proc.info['name'].lower()
+                # Kill Chrome processes related to our profiles
+                if 'chrome' in name or 'chromedriver' in name:
+                    cmdline = proc.info.get('cmdline', [])
+                    if cmdline and any('LiveMetricsProfile' in str(arg) or 'ScaleProfile' in str(arg) for arg in cmdline):
+                        print(f"[CLEANUP] Killing stale process: {proc.info['name']} (PID: {proc.info['pid']})")
+                        proc.kill()
+                        proc.wait(timeout=3)
+                        killed_count += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
+                pass
+        
+        if killed_count > 0:
+            print(f"[CLEANUP] Killed {killed_count} stale Chrome process(es)")
+            # Give OS time to release file locks
+            time.sleep(1)
+        return killed_count
+    except Exception as e:
+        print(f"[WARNING] Error during cleanup: {e}")
+        return 0
+
+def remove_profile_lock_files(profile_path):
+    """
+    Remove Chrome lock files that might be left over from crashed processes.
+    """
+    try:
+        lock_files = ['Singleton Lock', 'SingletonLock', 'lockfile']
+        for lock_file in lock_files:
+            lock_path = os.path.join(profile_path, lock_file)
+            if os.path.exists(lock_path):
+                try:
+                    os.remove(lock_path)
+                    print(f"[CLEANUP] Removed lock file: {lock_path}")
+                except Exception as e:
+                    print(f"[WARNING] Could not remove {lock_path}: {e}")
+    except Exception as e:
+        print(f"[WARNING] Error removing lock files: {e}")
 
 def apply_window_geometry(driver, prefix):
     try:
@@ -71,6 +118,10 @@ def launch_browsers_parallel():
     
     print("[STARTUP] Launching DC and SC browsers in parallel...")
     
+    # Clean up any stale Chrome processes before launching
+    print("[STARTUP] Checking for stale Chrome processes...")
+    cleanup_chrome_processes()
+    
     # Use ThreadPoolExecutor for parallel execution
     with ThreadPoolExecutor(max_workers=2) as executor:
         # Submit both launch tasks simultaneously
@@ -112,50 +163,80 @@ def launch_dc():
     chrome_ready = Event()  # <-- signal from thread to main
 
     def dc_worker():
-        try:
-            dc_profile = get_profile_path("LiveMetricsProfile")
-            os.makedirs(dc_profile, exist_ok=True)
-
-            opts_dc = webdriver.ChromeOptions()
-            opts_dc.add_argument(f"--user-data-dir={dc_profile}")
-            opts_dc.add_argument("--log-level=3")
-            opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
-            opts_dc.add_experimental_option("useAutomationExtension", False)
-
-            service_dc = Service(state.driver_path)
-            print("[DEBUG] Starting DC window")
+        max_retries = 2
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
             try:
-                state.driver_dc = webdriver.Chrome(service=service_dc, options=opts_dc)
+                dc_profile = get_profile_path("LiveMetricsProfile")
+                os.makedirs(dc_profile, exist_ok=True)
+                
+                # On retry, cleanup stale processes and lock files
+                if attempt > 0:
+                    print(f"[RETRY] DC launch attempt {attempt + 1}/{max_retries}")
+                    cleanup_chrome_processes()
+                    remove_profile_lock_files(dc_profile)
+                    time.sleep(retry_delay)
+
+                opts_dc = webdriver.ChromeOptions()
+                opts_dc.add_argument(f"--user-data-dir={dc_profile}")
+                opts_dc.add_argument("--log-level=3")
+                # Add flag to prevent profile lock issues
+                opts_dc.add_argument("--disable-gpu-process-crash-limit")
+                opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
+                opts_dc.add_experimental_option("useAutomationExtension", False)
+
+                service_dc = Service(state.driver_path)
+                print("[DEBUG] Starting DC window")
+                try:
+                    state.driver_dc = webdriver.Chrome(service=service_dc, options=opts_dc)
+                except Exception as e:
+                    error_str = str(e)
+                    
+                    # Check if it's a user data directory conflict
+                    if "user data directory is already in use" in error_str.lower():
+                        if attempt < max_retries - 1:
+                            print(f"[WARNING] Profile directory locked, will retry after cleanup...")
+                            continue  # Retry with cleanup
+                        else:
+                            print(f"[ERROR] Profile directory still locked after {max_retries} attempts")
+                    
+                    # Handle other errors
+                    print(f"[ERROR] DC Chrome launch failed: {e}")
+                    from error_reporter import log_chrome_launch_error
+                    from pathlib import Path
+                    
+                    # Check if it's a version mismatch
+                    if "This version of ChromeDriver" in error_str:
+                        # Flag that we need to update ChromeDriver
+                        cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
+                        cache_dir.mkdir(parents=True, exist_ok=True)
+                        (cache_dir / ".version_mismatch").touch()
+                    
+                    # Log and report the error
+                    log_chrome_launch_error(e)
+                    raise
+                    
+                apply_window_geometry(state.driver_dc, "dc")
+                state.driver_dc.get(config.cfg['dc_link'])
+
+                # Reduced timeout from 100s to 15s (more than enough for page load)
+                WebDriverWait(state.driver_dc, 15).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+
+                state.driver_dc.execute_script("document.title = 'DC'")
+
+                chrome_ready.set()  # <-- signal main thread
+                return  # Success, exit retry loop
+                
             except Exception as e:
-                print(f"[ERROR] DC Chrome launch failed: {e}")
-                from error_reporter import log_chrome_launch_error
-                from pathlib import Path
-                
-                # Check if it's a version mismatch
-                error_str = str(e)
-                if "This version of ChromeDriver" in error_str:
-                    # Flag that we need to update ChromeDriver
-                    cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
-                    cache_dir.mkdir(parents=True, exist_ok=True)
-                    (cache_dir / ".version_mismatch").touch()
-                
-                # Log and report the error
-                log_chrome_launch_error(e)
-                raise
-            apply_window_geometry(state.driver_dc, "dc")
-            state.driver_dc.get(config.cfg['dc_link'])
-
-            # Reduced timeout from 100s to 15s (more than enough for page load)
-            WebDriverWait(state.driver_dc, 15).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
-
-            state.driver_dc.execute_script("document.title = 'DC'")
-
-            chrome_ready.set()  # <-- signal main thread
-        except Exception as e:
-            print(f"[ERROR] DC worker failed: {e}")
-            chrome_ready.set()  # still signal to avoid hanging
+                if attempt < max_retries - 1:
+                    print(f"[ERROR] DC worker failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    continue  # Retry
+                else:
+                    print(f"[ERROR] DC worker failed after {max_retries} attempts: {e}")
+                    chrome_ready.set()  # still signal to avoid hanging
 
     threading.Thread(target=dc_worker, daemon=True).start()
 
@@ -191,74 +272,105 @@ def launch_sc():
     sel = config.cfg["department"]
     
     def sc_worker():
-        try:  
-            # 1. Compute path          
-            sc_profile = get_profile_path("ScaleProfile")
-            # 2. Make sure it exists
-            os.makedirs(sc_profile, exist_ok=True)
-            # 3. Tell Chrome to use it
-            opts_sc = webdriver.ChromeOptions()
-            opts_sc.add_argument(f"--user-data-dir={sc_profile}")
-            opts_sc.add_argument("--log-level=3")
-            opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
-            opts_sc.add_experimental_option("useAutomationExtension", False)
+        max_retries = 2
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            try:  
+                # 1. Compute path          
+                sc_profile = get_profile_path("ScaleProfile")
+                # 2. Make sure it exists
+                os.makedirs(sc_profile, exist_ok=True)
+                
+                # On retry, cleanup stale processes and lock files
+                if attempt > 0:
+                    print(f"[RETRY] SC launch attempt {attempt + 1}/{max_retries}")
+                    cleanup_chrome_processes()
+                    remove_profile_lock_files(sc_profile)
+                    time.sleep(retry_delay)
+                
+                # 3. Tell Chrome to use it
+                opts_sc = webdriver.ChromeOptions()
+                opts_sc.add_argument(f"--user-data-dir={sc_profile}")
+                opts_sc.add_argument("--log-level=3")
+                # Add flag to prevent profile lock issues
+                opts_sc.add_argument("--disable-gpu-process-crash-limit")
+                opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
+                opts_sc.add_experimental_option("useAutomationExtension", False)
 
-            # create/prepare profiles & bookmarks
-            generate_bookmarks(sel)
-            
-            service_sc = Service(state.driver_path)
-            print("[DEBUG] Starting Scale window")
-            try:
-                state.driver_sc = webdriver.Chrome(service=service_sc, options=opts_sc)
+                # create/prepare profiles & bookmarks
+                generate_bookmarks(sel)
+                
+                service_sc = Service(state.driver_path)
+                print("[DEBUG] Starting Scale window")
+                try:
+                    state.driver_sc = webdriver.Chrome(service=service_sc, options=opts_sc)
+                except Exception as e:
+                    error_str = str(e)
+                    
+                    # Check if it's a user data directory conflict
+                    if "user data directory is already in use" in error_str.lower():
+                        if attempt < max_retries - 1:
+                            print(f"[WARNING] Profile directory locked, will retry after cleanup...")
+                            continue  # Retry with cleanup
+                        else:
+                            print(f"[ERROR] Profile directory still locked after {max_retries} attempts")
+                    
+                    # Handle other errors
+                    print(f"[ERROR] Scale Chrome launch failed: {e}")
+                    from error_reporter import log_chrome_launch_error
+                    from pathlib import Path
+                    
+                    # Check if it's a version mismatch
+                    if "This version of ChromeDriver" in error_str:
+                        # Flag that we need to update ChromeDriver
+                        cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
+                        cache_dir.mkdir(parents=True, exist_ok=True)
+                        (cache_dir / ".version_mismatch").touch()
+                    
+                    # Log and report the error
+                    log_chrome_launch_error(e)
+                    raise
+                    
+                apply_window_geometry(state.driver_sc, "sc")
+                
+                # Add ?darkmode parameter if dark mode is enabled
+                sc_url = config.cfg['sc_link']
+                if config.cfg.get("darkmode", "False").lower() == "true":
+                    # Add ?darkmode parameter (handle existing query params)
+                    separator = "&" if "?" in sc_url else "?"
+                    sc_url = f"{sc_url}{separator}darkmode"
+                    print(f"[DEBUG] Dark mode enabled, opening: {sc_url}")
+                
+                state.driver_sc.get(sc_url)
+
+                # Reduced timeout from 100s to 15s (more than enough for page load)
+                WebDriverWait(state.driver_sc, 15).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+                
+                state.driver_sc.execute_script("document.title = 'SC'")
+                
+                # Set up automatic userscript injection on all pages
+                print("[DEBUG] Setting up userscript injection...")
+                success = setup_auto_injection(state.driver_sc)
+                
+                # If CDP failed, inject directly into current page as fallback
+                if not success:
+                    print("[DEBUG] CDP failed, trying direct injection...")
+                    from userscript_injector import inject_userscript
+                    inject_userscript(state.driver_sc)
+                
+                chrome_ready.set()  # <-- signal main thread
+                return  # Success, exit retry loop
+                
             except Exception as e:
-                print(f"[ERROR] Scale Chrome launch failed: {e}")
-                from error_reporter import log_chrome_launch_error
-                from pathlib import Path
-                
-                # Check if it's a version mismatch
-                error_str = str(e)
-                if "This version of ChromeDriver" in error_str:
-                    # Flag that we need to update ChromeDriver
-                    cache_dir = Path.home() / ".wdm" / "drivers" / "chromedriver"
-                    cache_dir.mkdir(parents=True, exist_ok=True)
-                    (cache_dir / ".version_mismatch").touch()
-                
-                # Log and report the error
-                log_chrome_launch_error(e)
-                raise
-            apply_window_geometry(state.driver_sc, "sc")
-            
-            # Add ?darkmode parameter if dark mode is enabled
-            sc_url = config.cfg['sc_link']
-            if config.cfg.get("darkmode", "False").lower() == "true":
-                # Add ?darkmode parameter (handle existing query params)
-                separator = "&" if "?" in sc_url else "?"
-                sc_url = f"{sc_url}{separator}darkmode"
-                print(f"[DEBUG] Dark mode enabled, opening: {sc_url}")
-            
-            state.driver_sc.get(sc_url)
-
-            # Reduced timeout from 100s to 15s (more than enough for page load)
-            WebDriverWait(state.driver_sc, 15).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
-            
-            state.driver_sc.execute_script("document.title = 'SC'")
-            
-            # Set up automatic userscript injection on all pages
-            print("[DEBUG] Setting up userscript injection...")
-            success = setup_auto_injection(state.driver_sc)
-            
-            # If CDP failed, inject directly into current page as fallback
-            if not success:
-                print("[DEBUG] CDP failed, trying direct injection...")
-                from userscript_injector import inject_userscript
-                inject_userscript(state.driver_sc)
-            
-            chrome_ready.set()  # <-- signal main thread
-        except Exception as e:
-            print(f"[ERROR] SC worker failed: {e}")
-            chrome_ready.set()  # still signal to avoid hanging
+                if attempt < max_retries - 1:
+                    print(f"[ERROR] SC worker failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    continue  # Retry
+                else:
+                    print(f"[ERROR] SC worker failed after {max_retries} attempts: {e}")
+                    chrome_ready.set()  # still signal to avoid hanging
 
     threading.Thread(target=sc_worker, daemon=True).start()
 
