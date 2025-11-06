@@ -41,27 +41,6 @@ def load_settings():
         if key not in section:
             section[key] = val
     
-    # One-time cleanup: Remove obsolete keys
-    needs_save = False
-    obsolete_keys = ['dc_link', 'sc_link', 'darkmode', 'theme', 'zoom_var']
-    for key in obsolete_keys:
-        if key in section:
-            old_value = section.get(key, '')
-            del section[key]
-            print(f"[MIGRATION] Removed '{key}' from settings.ini (value was: {old_value})")
-            needs_save = True
-    
-    # Explanation of removed keys:
-    # - dc_link, sc_link: URLs now come from constants.py
-    # - darkmode: Replaced by theme (stored in USER_PROFILE database)
-    # - theme: Now stored in USER_PROFILE database (USER_DEF3)
-    # - zoom_var: Now stored in USER_PROFILE database (USER_DEF4)
-    
-    if needs_save:
-        with open(settings_path, 'w') as f:
-            config.write(f)
-        print(f"[MIGRATION] settings.ini cleaned up - theme and zoom now from database only")
-    
     # Convert SectionProxy to a regular dictionary so runtime updates work correctly
     # SectionProxy lookups can be confusing and don't always reflect in-memory changes
     settings_dict = dict(section)
