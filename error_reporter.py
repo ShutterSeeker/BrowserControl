@@ -56,6 +56,14 @@ def get_system_info():
     except:
         hostname = "Unknown"
     
+    # Get application version
+    app_version = "Unknown"
+    try:
+        from constants import VERSION
+        app_version = VERSION
+    except (ImportError, AttributeError):
+        pass
+    
     return {
         "hostname": hostname,
         "platform": platform.system(),
@@ -64,6 +72,7 @@ def get_system_info():
         "architecture": platform.machine(),
         "processor": platform.processor(),
         "python_version": platform.python_version(),
+        "app_version": app_version,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -193,6 +202,7 @@ def report_critical_error(error_type, error_message, traceback_str=None,
 - **Platform:** {system_info['platform']} {system_info['platform_release']}
 - **Architecture:** {system_info['architecture']}
 - **Python Version:** {system_info['python_version']}
+- **App Version:** {system_info['app_version']}
 - **Timestamp:** {system_info['timestamp']}
 
 **Traceback:**
