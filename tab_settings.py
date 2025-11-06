@@ -21,6 +21,9 @@ def build_settings_tab(parent):
     # User-specific settings (if logged in)
     user_zoom_var = tk.StringVar()
     user_dark_var = tk.BooleanVar()
+    
+    # Flag to prevent auto-save during initial load
+    loading_user_settings = {'value': False}
 
     # Department dropdown (computer-level)
     tk.Label(frame, text="Location", bg="#2b2b2b", fg="white").grid(row=1, column=0, sticky="w", pady=5)
@@ -46,8 +49,16 @@ def build_settings_tab(parent):
             return
             
         # Read from already-populated state/config (loaded at login time)
-        user_zoom_var.set(state.zoom_var.get())
-        user_dark_var.set(config.cfg.get("theme", "dark") == "dark")
+        # IMPORTANT: Set values WITHOUT triggering trace callbacks
+        loading_user_settings['value'] = True
+        
+        try:
+            # Set values without triggering saves
+            user_zoom_var.set(state.zoom_var.get())
+            user_dark_var.set(config.cfg.get("theme", "dark") == "dark")
+            print(f"[SETTINGS] Loaded UI: theme={config.cfg.get('theme')}, zoom={state.zoom_var.get()}")
+        finally:
+            loading_user_settings['value'] = False
         
         # Create user settings controls if they don't exist
         if not user_settings_frame:
@@ -69,6 +80,45 @@ def build_settings_tab(parent):
             )
             dark_cb.pack(pady=5)
     
+    # Apply theme changes to live browser sessions
+    def apply_theme_to_browsers(theme):
+        """
+        Apply theme changes to both DC and SC browsers immediately.
+        - DC: Update localStorage 'theme' and refresh page
+        - SC: Update sessionStorage 'rfDarkMode' to 'enabled' or 'disabled'
+        """
+        try:
+            # Update DC browser (localStorage + refresh)
+            if state.driver_dc:
+                try:
+                    state.driver_dc.execute_script(f"localStorage.setItem('theme', '{theme}');")
+                    state.driver_dc.refresh()
+                    print(f"[SETTINGS] Applied theme '{theme}' to DC and refreshed")
+                except Exception as e:
+                    print(f"[WARNING] Failed to apply theme to DC: {e}")
+            
+            # Update SC browser (sessionStorage + remove ?darkmode from URL)
+            if state.driver_sc:
+                try:
+                    rf_dark_mode = 'enabled' if theme == 'dark' else 'disabled'
+                    state.driver_sc.execute_script(f"sessionStorage.setItem('rfDarkMode', '{rf_dark_mode}');")
+                    
+                    # Remove ?darkmode from URL if present (userscript resets cache on this param)
+                    current_url = state.driver_sc.current_url
+                    if '?darkmode' in current_url:
+                        clean_url = current_url.replace('?darkmode', '')
+                        state.driver_sc.get(clean_url)
+                        print(f"[SETTINGS] Removed ?darkmode from URL and navigated to: {clean_url}")
+                    else:
+                        state.driver_sc.refresh()
+                    
+                    print(f"[SETTINGS] Applied rfDarkMode '{rf_dark_mode}' to SC")
+                except Exception as e:
+                    print(f"[WARNING] Failed to apply theme to SC: {e}")
+                    
+        except Exception as e:
+            print(f"[ERROR] Failed to apply theme to browsers: {e}")
+    
     # Save user settings to database
     def save_user_settings():
         if not state.logged_in or not state.username:
@@ -85,9 +135,19 @@ def build_settings_tab(parent):
             )
             resp.raise_for_status()
             
-            # Update state.zoom_var and config for compatibility
+            # Update runtime config and state
             state.zoom_var.set(zoom)
             config.cfg["theme"] = theme
+            config.cfg["zoom_var"] = zoom
+            
+            # Update cache so next login uses new settings
+            state.user_settings_cache[state.username] = {
+                "theme": theme,
+                "zoom": zoom
+            }
+            
+            # Apply theme changes to live browser sessions
+            apply_theme_to_browsers(theme)
             
             flash_message(msg_lbl, msg_var, "User settings saved", status='success')
         except Exception as e:
@@ -119,7 +179,9 @@ def build_settings_tab(parent):
 
     # Auto-update user settings (user-level)
     def update_user_cfg(*_):
-        save_user_settings()
+        # Don't save if we're just loading initial values
+        if not loading_user_settings['value']:
+            save_user_settings()
 
     department_var.trace_add("write", update_department)
     user_zoom_var.trace_add("write", update_user_cfg)

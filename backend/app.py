@@ -1,11 +1,13 @@
 from flask import Flask, request, jsonify
+import pyodbc
 import threading
-from db_pool import execute_update, execute_stored_proc, execute_query, get_pool_status
 
 app = Flask(__name__)
 
-# Database connection pooling is initialized in db_pool.py
-# No need for manual connection strings here!
+# SQL Server configuration
+SERVER = "JASPRODSQL09"
+DATABASE = "ILS"
+DRIVER = "{ODBC Driver 17 for SQL Server}"
 
 @app.errorhandler(500)
 def handle_500_error(e):
@@ -15,29 +17,17 @@ def handle_500_error(e):
 @app.route("/health", methods=["GET"])
 def health_check():
     """
-    Health check endpoint with connection pool statistics.
-    
-    Returns pool status for monitoring and debugging.
+    Health check endpoint - simple status check.
     """
-    try:
-        pool_stats = get_pool_status()
-        return jsonify({
-            "status": "healthy",
-            "connection_pool": pool_stats,
-            "message": "API is running with connection pooling"
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "unhealthy",
-            "error": str(e)
-        }), 500
+    return jsonify({
+        "status": "healthy",
+        "message": "API is running"
+    })
 
 @app.route("/update_pallet_arrived_by_tote", methods=["POST"])
 def update_pallet_arrived_by_tote():
     """
     Update pallet status to 'Arrived' by container ID.
-    
-    Now uses connection pooling for 80% faster response!
     """
     data = request.json
     container_id = data.get("PARENT_CONTAINER_ID")
@@ -46,6 +36,12 @@ def update_pallet_arrived_by_tote():
         return jsonify({"MSG": "Missing PARENT_CONTAINER_ID"}), 400
 
     try:
+        conn = pyodbc.connect(f"""
+            DRIVER={DRIVER};
+            SERVER={SERVER};
+            DATABASE={DATABASE};
+            Trusted_Connection=yes;
+        """)
         sql = """
         DECLARE @PARENT_CONTAINER_ID NVARCHAR(50) = ?;
 
@@ -56,8 +52,12 @@ def update_pallet_arrived_by_tote():
             AND USER_DEF1 <> N'Arrived'
         """
         
-        # Use connection pool - much faster than creating new connection!
-        rows_affected = execute_update(sql, (container_id,))
+        cursor = conn.cursor()
+        cursor.execute(sql, (container_id,))
+        rows_affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
         
         return jsonify({"MSG": "Update successful", "rows_affected": rows_affected})
     except Exception as e:
@@ -67,8 +67,6 @@ def update_pallet_arrived_by_tote():
 def select_pallet_arrived_by_tote():
     """
     Execute stored procedure to check pallet arrival by tote.
-    
-    Now uses connection pooling for 80% faster response!
     """
     data = request.json
     tote = data.get("tote")
@@ -77,8 +75,20 @@ def select_pallet_arrived_by_tote():
         return jsonify({"MSG": "Missing tote number"}), 400
 
     try:
-        # Use connection pool - executes stored procedure
-        result = execute_stored_proc("usp_BrowserControlArrive", (tote,))
+        conn = pyodbc.connect(f"""
+            DRIVER={DRIVER};
+            SERVER={SERVER};
+            DATABASE={DATABASE};
+            Trusted_Connection=yes;
+        """)
+
+        cursor = conn.cursor()
+        cursor.execute("EXEC usp_BrowserControlArrive ?", (tote,))
+        row = cursor.fetchone()
+        columns = [desc[0] for desc in cursor.description]
+        result = dict(zip(columns, row))
+        cursor.close()
+        conn.close()
         return jsonify(result)
     except Exception as e:
         return jsonify({"MSG": str(e)}), 500
@@ -88,8 +98,6 @@ def select_pallet_arrived_by_tote():
 def lookup_lp_by_gtin():
     """
     Lookup location inventory by GTIN and department.
-    
-    Now uses connection pooling for 80% faster response!
     """
     data = request.json
     gtin = data.get("gtin")
@@ -99,6 +107,12 @@ def lookup_lp_by_gtin():
         return jsonify({"error": "Missing GTIN or department"}), 400
 
     try:
+        conn = pyodbc.connect(f"""
+            DRIVER={DRIVER};
+            SERVER={SERVER};
+            DATABASE={DATABASE};
+            Trusted_Connection=yes;
+        """)
         sql = """
         DECLARE @GTIN NVARCHAR(50) = ?;
         DECLARE @LOCATION NVARCHAR(50) = ?;
@@ -123,10 +137,64 @@ def lookup_lp_by_gtin():
                 ELSE LI.LOCATION
             END;
         """
-        
-        # Use connection pool - returns list of dicts
-        results = execute_query(sql, (gtin, loc))
+        cursor = conn.cursor()
+        cursor.execute(sql, (gtin, loc))
+        columns = [col[0] for col in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cursor.close()
+        conn.close()
         return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/get_all_user_settings", methods=["GET"])
+def get_all_user_settings():
+    """
+    Get ALL user settings from USER_PROFILE table where settings are defined.
+    Used during app startup to pre-cache settings.
+    
+    USER_DEF3 = theme ('light' or 'dark')
+    USER_DEF4 = zoom level ('150', '200', '250', '300')
+    """
+    try:
+        conn = pyodbc.connect(f"""
+            DRIVER={DRIVER};
+            SERVER={SERVER};
+            DATABASE={DATABASE};
+            Trusted_Connection=yes;
+        """)
+        sql = """
+        SELECT 
+            USER_NAME AS username,
+            USER_DEF3 AS theme,
+            USER_DEF4 AS zoom
+        FROM USER_PROFILE 
+        WHERE USER_DEF3 IS NOT NULL 
+          AND USER_DEF4 IS NOT NULL
+        """
+        
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        columns = [col[0] for col in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+        
+        # Build a dictionary keyed by username
+        user_settings = {}
+        for row in results:
+            username = row.get("username")
+            if username:
+                user_settings[username] = {
+                    "theme": row.get("theme") or "dark",
+                    "zoom": row.get("zoom") or "200"
+                }
+        
+        return jsonify({
+            "count": len(user_settings),
+            "users": user_settings
+        })
+            
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -145,6 +213,12 @@ def get_user_settings():
         return jsonify({"error": "Missing username"}), 400
 
     try:
+        conn = pyodbc.connect(f"""
+            DRIVER={DRIVER};
+            SERVER={SERVER};
+            DATABASE={DATABASE};
+            Trusted_Connection=yes;
+        """)
         sql = """
         SELECT 
             USER_DEF3 AS theme,
@@ -153,7 +227,12 @@ def get_user_settings():
         WHERE USER_NAME = ?
         """
         
-        results = execute_query(sql, (username,))
+        cursor = conn.cursor()
+        cursor.execute(sql, (username,))
+        columns = [col[0] for col in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cursor.close()
+        conn.close()
         
         if results and len(results) > 0:
             user_settings = results[0]
@@ -185,13 +264,24 @@ def update_user_settings():
         return jsonify({"error": "Missing username"}), 400
 
     try:
+        conn = pyodbc.connect(f"""
+            DRIVER={DRIVER};
+            SERVER={SERVER};
+            DATABASE={DATABASE};
+            Trusted_Connection=yes;
+        """)
         sql = """
         UPDATE USER_PROFILE 
         SET USER_DEF3 = ?, USER_DEF4 = ?
         WHERE USER_NAME = ?
         """
         
-        rows_affected = execute_update(sql, (theme, zoom, username))
+        cursor = conn.cursor()
+        cursor.execute(sql, (theme, zoom, username))
+        rows_affected = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
         
         if rows_affected > 0:
             return jsonify({"message": "Settings updated successfully", "rows_affected": rows_affected})
@@ -200,18 +290,18 @@ def update_user_settings():
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
 if __name__ == "__main__":
-    from db_pool import close_connection_pool
-    
-    print("[API] Starting Flask API with connection pooling...")
+    print("[API] Starting Flask API...")
     print("[API] Endpoints:")
+    print("  - GET  /health")
     print("  - POST /update_pallet_arrived_by_tote")
     print("  - POST /select_pallet_arrived_by_tote")
     print("  - POST /lookup_lp_by_gtin")
+    print("  - GET  /get_all_user_settings")
     print("  - POST /get_user_settings")
     print("  - POST /update_user_settings")
-    print("  - GET  /health (pool statistics)")
+    print("")
     
     # Start Flask in a thread so the tray doesn't block it
     flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000), daemon=True)
@@ -222,6 +312,4 @@ if __name__ == "__main__":
         while True:
             threading.Event().wait()
     except KeyboardInterrupt:
-        print("\n[API] Shutting down...")
-        close_connection_pool()
-        print("[API] Shutdown complete")
+        pass

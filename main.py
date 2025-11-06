@@ -187,6 +187,41 @@ def _update_userscripts(splash):
         return "userscripts"
 
 
+def _preload_user_settings(splash):
+    """
+    Pre-load ALL user settings from database during splash screen.
+    This avoids API calls during Chrome launch (for ~50 users).
+    Cache is stored in state.user_settings_cache.
+    """
+    import state
+    import requests
+    from constants import IP, PORT
+    
+    try:
+        print("[STARTUP] Pre-loading all user settings...")
+        
+        resp = requests.get(
+            f"http://{IP}:{PORT}/get_all_user_settings",
+            timeout=5
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        
+        # Store in cache
+        state.user_settings_cache = data.get("users", {})
+        count = data.get("count", 0)
+        
+        print(f"[STARTUP] Loaded settings for {count} users into cache")
+        return "user_settings"
+        
+    except Exception as e:
+        print(f"[WARNING] Failed to pre-load user settings: {e}")
+        splash.status_var.set("⚠️ User settings pre-load failed (will load on demand)")
+        # Don't fail startup - just leave cache empty
+        state.user_settings_cache = {}
+        return "user_settings"
+
+
 def start():
     """
     Optimized startup using sequential loading with progress indicator.
@@ -206,7 +241,7 @@ def start():
     logger.info("BrowserControl starting...")
     
     splash = ui.show_splash()
-    completed_tasks = {'count': 0, 'total': 5}
+    completed_tasks = {'count': 0, 'total': 6}
 
     def load_everything_sequential():
         """Load all necessary components one at a time with progress updates"""
@@ -215,6 +250,7 @@ def start():
             ("Checking for updates...", _check_updates),
             ("Setting up Chrome WebDriver...", _install_chromedriver),
             ("Loading core modules...", _preload_critical_modules),
+            ("Loading user settings...", _preload_user_settings),
             ("Updating userscripts...", _update_userscripts)
         ]
         

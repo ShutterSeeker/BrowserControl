@@ -123,37 +123,63 @@ def start_threads_parallel():
     
     # Now wait for both to be ready in parallel threads
     def wait_dc():
-        dc_ready.wait(timeout=20)
-        print(f"[DEBUG] Waiting for window with title: {DC_TITLE}")
         try:
+            dc_ready.wait(timeout=20)
+            print(f"[DEBUG] Waiting for window with title: {DC_TITLE}")
+            
             state.dc_win = wait_for_window(
                 lambda: gw.getWindowsWithTitle(DC_TITLE),
                 timeout=5.0,
                 window_title=DC_TITLE
             )
+            
             # Always setup DC (login and navigate to MetricsLive)
+            # Note: setup_dc() now sets dc_event immediately after login button click
             setup_dc()
             set_window_state(state.dc_win, config.cfg["dc_state"])
-            state.dc_event.set()
-        except TimeoutError as e:
-            print(f"[ERROR] {e}")
+            
+        except Exception as e:
+            # Log error but still signal ready if we at least clicked login
+            print(f"[ERROR] DC setup error: {e}")
+            # Check if we at least have a window - if so, user can still work
+            if state.dc_win:
+                print("[DC] Window exists despite error, signaling ready anyway")
+                # Set event as fallback if setup_dc didn't reach the click
+                if not state.dc_event.is_set():
+                    state.dc_event.set()
     
     def wait_sc():
-        sc_ready.wait(timeout=20)
-        print(f"[DEBUG] Waiting for window with title: {SC_TITLE}")
         try:
+            sc_ready.wait(timeout=20)
+            print(f"[DEBUG] Waiting for window with title: {SC_TITLE}")
+            
             state.sc_win = wait_for_window(
                 lambda: gw.getWindowsWithTitle(SC_TITLE),
                 timeout=5.0,
                 window_title=SC_TITLE
             )
             state.sc_hwnd = state.sc_win._hWnd
+            
             # Always setup SC (login and navigate to department page)
             setup_sc()
             set_window_state(state.sc_win, config.cfg["sc_state"])
+            
+            # Set event immediately after last user input (setup_sc returns fast now)
+            print("[SC] User input complete, signaling ready")
+            
+        except Exception as e:
+            # Log error but still signal ready if we at least clicked login
+            print(f"[ERROR] SC setup error: {e}")
+            # Check if we at least have a window - if so, user can still work
+            if state.sc_win:
+                print("[SC] Window exists despite error, signaling ready anyway")
+        finally:
+            # ALWAYS set the event to prevent hanging
+            # Even if there's an error, we want the UI to become responsive
+            import time
+            if hasattr(state, 'login_start_time'):
+                print(f"[PERF] ⏱️  SC event SET at {time.time() - state.login_start_time:.2f}s")
             state.sc_event.set()
-        except TimeoutError as e:
-            print(f"[ERROR] {e}")
     
     # Wait for both windows in parallel
     threading.Thread(target=wait_dc, daemon=True).start()

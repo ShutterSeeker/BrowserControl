@@ -252,37 +252,53 @@ def launch_dc():
 
 def setup_dc():
     """Login to DC and set theme. Browser will auto-redirect to originally requested URL."""
+    start_time = time.time()
+    
     if state.should_abort:
         print("[INFO] setup_dc aborted early.")
         return
     
     try:
-        # Login to DC (browser will auto-redirect to the originally requested URL after login)
+        # Wait for login page to load
         WebDriverWait(state.driver_dc, 10).until(
-                    EC.presence_of_element_located((By.ID, "MainContent_txtUsername"))
-                ).send_keys(state.username)
-        WebDriverWait(state.driver_dc, 10).until(
-                    EC.presence_of_element_located((By.ID, "MainContent_txtPassword"))
-                ).send_keys(state.password)
-        WebDriverWait(state.driver_dc, 10).until(
-            EC.element_to_be_clickable((By.ID, "MainContent_btnLogin"))
-        ).click()
-        
-        # Wait for redirect to complete
-        WebDriverWait(state.driver_dc, 10).until(
-            lambda d: "login" not in d.current_url.lower()
+            EC.presence_of_element_located((By.ID, "MainContent_txtUsername"))
         )
         
-        # Set theme based on theme setting
+        # Set theme FIRST (before entering credentials) so login page has correct theme
         theme = config.cfg.get("theme", "dark")
-        print(f"[DEBUG] Setting DC theme to: {theme}")
+        print(f"[DC_SETUP] DEBUG: config.cfg type: {type(config.cfg)}")
+        print(f"[DC_SETUP] DEBUG: config.cfg id: {id(config.cfg)}")
+        print(f"[DC_SETUP] DEBUG: config.cfg contents: {dict(config.cfg)}")
+        print(f"[DC_SETUP] DEBUG: config.cfg.get('theme', 'NOT_FOUND'): {config.cfg.get('theme', 'NOT_FOUND')}")
+        print(f"[DC_SETUP] DEBUG: config.cfg['theme']: {config.cfg.get('theme', 'KEY_ERROR')}")
+        print(f"[DC_SETUP] Setting theme to '{theme}' on login page")
         state.driver_dc.execute_script(f"localStorage.setItem('theme', '{theme}');")
         
-        # Refresh to apply theme
-        state.driver_dc.refresh()
+        # Brief wait to let theme apply
+        time.sleep(0.1)
+        
+        # Now enter credentials with themed login page
+        state.driver_dc.find_element(By.ID, "MainContent_txtUsername").send_keys(state.username)
+        state.driver_dc.find_element(By.ID, "MainContent_txtPassword").send_keys(state.password)
+        login_button = WebDriverWait(state.driver_dc, 10).until(
+            EC.element_to_be_clickable((By.ID, "MainContent_btnLogin"))
+        )
+        
+        # Signal ready BEFORE clicking - we're about to click, that's good enough!
+        elapsed = time.time() - start_time
+        print(f"[DC_SETUP] ⏱️  About to click login button - user input complete ({elapsed:.2f}s)")
+        
+        if hasattr(state, 'login_start_time'):
+            print(f"[PERF] ⏱️  DC event SET at {time.time() - state.login_start_time:.2f}s")
+        state.dc_event.set()
+        print("[DC] User input complete, signaling ready")
+        
+        # Now click (this will take time to send the request, but we don't wait for it)
+        login_button.click()
         
     except Exception as e:
-        print(f"[ERROR] setup_dc failed: {e}")
+        print(f"[ERROR] setup_dc login failed: {e}")
+        # Don't raise - let the caller decide what to do
         return
     
 def launch_sc():
@@ -402,6 +418,10 @@ def setup_sc():
     if state.should_abort:
         print("[INFO] setup_sc aborted early.")
         return
+    
+    # Track if we've completed user input
+    user_input_complete = False
+    
     try:
         # Reduced timeouts from 100s to 10s each (more than enough for login form)
         WebDriverWait(state.driver_sc, 10).until(
@@ -430,64 +450,82 @@ def setup_sc():
     except:
         print("[INFO] No Continue button appeared — maybe already on menu.")
 
-    # Reduced timeout from 100s to 15s for navigation
+    # Wait for navigation to complete (this is quick, not user-blocking)
     WebDriverWait(state.driver_sc, 15).until(
         lambda d: d.current_url.startswith(RF_URL)
     )
 
-    if sel.startswith("DECANT.WS"):
-        # Go to DecantProcessing
-        decant_url = DECANT_URL
-        if config.cfg.get("theme", "dark") == "dark":
-            # Add ?darkmode parameter (handle existing query params)
-            separator = "&" if "?" in decant_url else "?"
-            decant_url = f"{decant_url}{separator}darkmode"
-            print(f"[DEBUG] Dark mode enabled for Decant, opening: {decant_url}")
-        
-        state.driver_sc.get(decant_url)
-        
-        # Ensure userscript is active on this page
-        from userscript_injector import inject_on_scale_pages
-        inject_on_scale_pages(state.driver_sc)
+    # Navigate to department-specific page and complete setup
+    def complete_navigation():
+        try:
+            if sel.startswith("DECANT.WS"):
+                # Go to DecantProcessing
+                decant_url = DECANT_URL
+                if config.cfg.get("theme", "dark") == "dark":
+                    # Add ?darkmode parameter (handle existing query params)
+                    separator = "&" if "?" in decant_url else "?"
+                    decant_url = f"{decant_url}{separator}darkmode"
+                    print(f"[DEBUG] Dark mode enabled for Decant, opening: {decant_url}")
+                
+                state.driver_sc.get(decant_url)
+                
+                # Ensure userscript is active on this page
+                from userscript_injector import inject_on_scale_pages
+                inject_on_scale_pages(state.driver_sc)
 
-    elif sel.startswith("PalletizingStation"):
-        # Go to PalletComplete page
-        slotstax_url = SLOTSTAX_URL
-        if config.cfg.get("theme", "dark") == "dark":
-            separator = "&" if "?" in slotstax_url else "?"
-            slotstax_url = f"{slotstax_url}{separator}darkmode"
-            print(f"[DEBUG] Dark mode enabled for SlotStax, opening: {slotstax_url}")
-        
-        state.driver_sc.get(slotstax_url)
-        
-        # Ensure userscript is active on this page
-        from userscript_injector import inject_on_scale_pages
-        inject_on_scale_pages(state.driver_sc)
+            elif sel.startswith("PalletizingStation"):
+                # Go to PalletComplete page
+                slotstax_url = SLOTSTAX_URL
+                if config.cfg.get("theme", "dark") == "dark":
+                    separator = "&" if "?" in slotstax_url else "?"
+                    slotstax_url = f"{slotstax_url}{separator}darkmode"
+                    print(f"[DEBUG] Dark mode enabled for SlotStax, opening: {slotstax_url}")
+                
+                state.driver_sc.get(slotstax_url)
+                
+                # Ensure userscript is active on this page
+                from userscript_injector import inject_on_scale_pages
+                inject_on_scale_pages(state.driver_sc)
 
-        # Wait for input box (reduced from 100s to 10s)
-        station_input = WebDriverWait(state.driver_sc, 10).until(
-            EC.presence_of_element_located((By.ID, "txtSlotstaxLoc"))
-        )
+                # Wait for input box (reduced from 100s to 10s)
+                station_input = WebDriverWait(state.driver_sc, 10).until(
+                    EC.presence_of_element_located((By.ID, "txtSlotstaxLoc"))
+                )
 
-        # Enter station name
-        station_input.clear()
-        station_input.send_keys(sel)
+                # Enter station name
+                station_input.clear()
+                station_input.send_keys(sel)
 
-        # Wait for and select "Shipping" from dropdown
-        select_elem = Select(state.driver_sc.find_element(By.ID, "dropdownExecutionMode"))
-        select_elem.select_by_visible_text("Shipping")
+                # Wait for and select "Shipping" from dropdown
+                select_elem = Select(state.driver_sc.find_element(By.ID, "dropdownExecutionMode"))
+                select_elem.select_by_visible_text("Shipping")
 
-        # Click "Begin" (reduced from 100s to 10s)
-        WebDriverWait(state.driver_sc, 10).until(
-            EC.element_to_be_clickable((By.ID, "btnBegin"))
-        ).click()
+                # Click "Begin" (reduced from 100s to 10s)
+                WebDriverWait(state.driver_sc, 10).until(
+                    EC.element_to_be_clickable((By.ID, "btnBegin"))
+                ).click()
+                print("[SC_SETUP] SlotStax setup complete")
 
-    elif sel.startswith("Packing"):
-        state.driver_sc.get(PACKING_URL)
-        
-        # Ensure userscript is active on this page
-        from userscript_injector import inject_on_scale_pages
-        inject_on_scale_pages(state.driver_sc)
+            elif sel.startswith("Packing"):
+                state.driver_sc.get(PACKING_URL)
+                
+                # Ensure userscript is active on this page
+                from userscript_injector import inject_on_scale_pages
+                inject_on_scale_pages(state.driver_sc)
+                print("[SC_SETUP] Packing setup complete")
 
+            else:
+                print("Unrecognized department:", sel)
+        except Exception as e:
+            print(f"[WARNING] SC navigation failed: {e}")
+    
+    # For SlotStax, we need to wait for "Begin" button click before signaling ready
+    # For other departments, we can signal ready immediately
+    if sel.startswith("PalletizingStation"):
+        complete_navigation()  # This includes clicking "Begin" - the last user input
+        print("[SC_SETUP] User input complete (SlotStax Begin clicked)")
     else:
-        print("Unrecognized department:", sel)
+        # For Decant/Packing, user input is complete after login
+        # Run navigation in background
+        print("[SC_SETUP] User input complete (login finished)")
+        threading.Thread(target=complete_navigation, daemon=True).start()

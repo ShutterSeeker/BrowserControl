@@ -10,9 +10,8 @@ settings_path = get_path(CONFIG_FILE)
 def save_settings():
 
     # Use existing values from memory
+    # NOTE: zoom_var and theme are NOT saved here - they come from USER_PROFILE database
     department = config.cfg.get("department", "")
-    zoom_var = config.cfg.get("zoom_var", "")
-    darkmode = config.cfg.get("darkmode", "")
 
     # Load existing settings.ini
     parser = configparser.ConfigParser()
@@ -22,10 +21,8 @@ def save_settings():
     if not parser.has_section(SECTION):
         parser.add_section(SECTION)
 
-    # Only update the 3 keys you care about
+    # Only update department (window positions are saved separately)
     parser[SECTION]['department'] = department
-    parser[SECTION]['zoom_var'] = zoom_var
-    parser[SECTION]['darkmode'] = darkmode
 
     with open(settings_path, 'w') as configfile:
         parser.write(configfile)
@@ -44,38 +41,36 @@ def load_settings():
         if key not in section:
             section[key] = val
     
-    # One-time cleanup: Remove dc_link and sc_link from config (URLs now come from constants)
+    # One-time cleanup: Remove obsolete keys
     needs_save = False
-    if 'dc_link' in section:
-        print(f"[MIGRATION] Removing dc_link from config (now using constants)")
-        del section['dc_link']
-        needs_save = True
-    if 'sc_link' in section:
-        print(f"[MIGRATION] Removing sc_link from config (now using constants)")
-        del section['sc_link']
-        needs_save = True
+    obsolete_keys = ['dc_link', 'sc_link', 'darkmode', 'theme', 'zoom_var']
+    for key in obsolete_keys:
+        if key in section:
+            old_value = section.get(key, '')
+            del section[key]
+            print(f"[MIGRATION] Removed '{key}' from settings.ini (value was: {old_value})")
+            needs_save = True
     
-    # Migrate darkmode (True/False) to theme (dark/light)
-    if 'darkmode' in section:
-        old_value = section['darkmode']
-        # Convert True/False to dark/light
-        if old_value.lower() == 'true':
-            new_value = 'dark'
-        elif old_value.lower() == 'false':
-            new_value = 'light'
-        else:
-            new_value = 'dark'  # Default
-        section['theme'] = new_value
-        del section['darkmode']
-        print(f"[MIGRATION] Converted darkmode='{old_value}' to theme='{new_value}'")
-        needs_save = True
+    # Explanation of removed keys:
+    # - dc_link, sc_link: URLs now come from constants.py
+    # - darkmode: Replaced by theme (stored in USER_PROFILE database)
+    # - theme: Now stored in USER_PROFILE database (USER_DEF3)
+    # - zoom_var: Now stored in USER_PROFILE database (USER_DEF4)
     
     if needs_save:
         with open(settings_path, 'w') as f:
             config.write(f)
-        print(f"[MIGRATION] Config cleaned up")
+        print(f"[MIGRATION] settings.ini cleaned up - theme and zoom now from database only")
     
-    return section
+    # Convert SectionProxy to a regular dictionary so runtime updates work correctly
+    # SectionProxy lookups can be confusing and don't always reflect in-memory changes
+    settings_dict = dict(section)
+    
+    # Set runtime defaults for theme and zoom (will be overridden by database on login)
+    settings_dict['theme'] = 'dark'  # Default theme
+    settings_dict['zoom_var'] = '200'  # Default zoom
+    
+    return settings_dict
 
 def save_position(x, y):
 

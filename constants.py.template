@@ -55,8 +55,6 @@ DEPARTMENTS = [
 ]
 DEFAULTS = {
     'department': 'DECANT.WS.5',
-    'zoom_var': '200',
-    'theme': 'dark',
     'win_x': '41',
     'win_y': '1210',
     'dc_x': '1747',

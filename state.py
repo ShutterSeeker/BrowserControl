@@ -23,3 +23,10 @@ click_blocker = None
 relaunched = False
 settings_frame = None  # Reference to settings tab for refreshing after login
 logged_in = False  # Track login state for user-specific settings
+
+# User settings cache (pre-loaded during splash screen for fast login)
+# Format: {"username": {"theme": "dark", "zoom": "200"}, ...}
+user_settings_cache = {}
+
+# Performance timing
+login_start_time = None  # Timestamp when login button is pressed (for performance measurement)

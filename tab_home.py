@@ -155,59 +155,120 @@ def show_main_ui(parent, frame):
     state.zoom_var.trace_add("write", update_zoom_button_text)
 
 
-    def wait_for_both(attempt=1):
-        if state.dc_event.is_set() and state.sc_event.is_set():
+    def wait_for_both():
+        """
+        Wait for both DC and SC events to be set using threading.
+        This is more responsive than polling - triggers immediately when both are ready.
+        """
+        import time
+        start_wait_time = time.time()
+        
+        def check_ready():
+            # Use threading.Event.wait() with timeout for instant response
+            # Wait for DC event (20 second timeout)
+            if hasattr(state, 'login_start_time'):
+                print(f"[PERF] ⏱️  Waiting for DC event... (at {time.time() - state.login_start_time:.2f}s)")
+            
+            dc_success = state.dc_event.wait(timeout=20)
+            if not dc_success:
+                print("[WARN] DC event timeout")
+                state.root.after(0, handle_launch_failure)
+                return
+            
+            dc_ready_time = time.time()
+            if hasattr(state, 'login_start_time'):
+                print(f"[PERF] ⏱️  DC event RECEIVED at {dc_ready_time - state.login_start_time:.2f}s from login press")
+            
+            # Wait for SC event (20 second timeout)
+            if hasattr(state, 'login_start_time'):
+                print(f"[PERF] ⏱️  DC done, now waiting for SC event... (at {time.time() - state.login_start_time:.2f}s)")
+            
+            sc_success = state.sc_event.wait(timeout=20)
+            if not sc_success:
+                print("[WARN] SC event timeout")
+                state.root.after(0, handle_launch_failure)
+                return
+            
+            sc_ready_time = time.time()
+            if hasattr(state, 'login_start_time'):
+                print(f"[PERF] ⏱️  SC event RECEIVED at {sc_ready_time - state.login_start_time:.2f}s from login press")
+            
+            # Both ready! Update UI immediately
+            if hasattr(state, 'login_start_time'):
+                total_time = time.time() - state.login_start_time
+                print(f"[PERF] ⏱️  'Ready!' displayed in {total_time:.2f}s from login button press")
+            state.root.after(0, on_both_ready)
+        
+        def on_both_ready():
+            """Called when both browsers are ready - runs on UI thread"""
             state.relaunched = False
             enable_all_clicks()
 
-            tools_tab = tab_tools.build_tools_tab()
-            state.notebook.add(tools_tab, text="Tools")
-
+            # Show "Ready!" message FIRST (don't wait for Tools tab to build)
             flash_message(msg_lbl, msg_var, "Ready!", status='success')
 
-            for widget in frame.winfo_children(): # Enable all buttons
+            # Enable all buttons immediately
+            for widget in frame.winfo_children():
                 if isinstance(widget, ttk.Button):
                     widget.state(['!disabled'])
-        elif attempt > 200 and state.relaunched == False:  # ~20 seconds total (200 * 100ms)
-            state.relaunched = True
-            print("[WARN] One or both windows failed to launch. Attempting relaunch.")
-            state.should_abort = True
-            state.root.after(100, close_chrome())  # shut down any launched windows
-            enable_all_clicks()
-            flash_message(msg_lbl, msg_var, "Failed. Attempting relaunch...", status='error')
-            profile_path = get_path("profiles")
-            if os.path.isdir(profile_path):
-                shutil.rmtree(profile_path)
-                print(f"Deleted folder: {profile_path}")
+            
+            # Build Tools tab in background (non-blocking)
+            def build_tools_async():
+                try:
+                    print("[PERF] ⏱️  Building Tools tab in background...")
+                    tools_tab = tab_tools.build_tools_tab()
+                    # Schedule adding the tab on UI thread
+                    state.root.after(0, lambda: state.notebook.add(tools_tab, text="Tools"))
+                    print("[PERF] ⏱️  Tools tab added")
+                except Exception as e:
+                    print(f"[ERROR] Failed to build Tools tab: {e}")
+            
+            threading.Thread(target=build_tools_async, daemon=True).start()
+        
+        def handle_launch_failure():
+            """Handle browser launch failure - runs on UI thread"""
+            if not state.relaunched:
+                state.relaunched = True
+                print("[WARN] One or both windows failed to launch. Attempting relaunch.")
+                state.should_abort = True
+                state.root.after(100, close_chrome)  # shut down any launched windows
+                enable_all_clicks()
+                flash_message(msg_lbl, msg_var, "Failed. Attempting relaunch...", status='error')
+                profile_path = get_path("profiles")
+                if os.path.isdir(profile_path):
+                    shutil.rmtree(profile_path)
+                    print(f"Deleted folder: {profile_path}")
+                else:
+                    print(f"Nothing found at: {profile_path}")
+                state.should_abort = False
+                disable_all_clicks()
+                start_threads_parallel()  # relaunch everything (50% faster with parallel launch!)
+                wait_for_both()  # Try again
             else:
-                print(f"Nothing found at: {profile_path}")
-            state.should_abort = False
-            disable_all_clicks()
-            start_threads_parallel()  # relaunch everything (50% faster with parallel launch!)
-            wait_for_both()
-        elif attempt > 200:
-            state.relaunched = False
-            print("[WARN] One or both windows failed to relaunch.")
-            state.should_abort = True
-            state.root.after(100, close_chrome())  # shut down any launched windows
-            enable_all_clicks()
-            profile_path = get_path("profiles")
-            if os.path.isdir(profile_path):
-                shutil.rmtree(profile_path)
-                print(f"Deleted folder: {profile_path}")
-            else:
-                print(f"Nothing found at: {profile_path}")
-            state.should_abort = False
-            tools_tab = tab_tools.build_tools_tab()
-            state.notebook.add(tools_tab, text="Tools")
+                # Second failure - give up
+                state.relaunched = False
+                print("[WARN] One or both windows failed to relaunch.")
+                state.should_abort = True
+                state.root.after(100, close_chrome)  # shut down any launched windows
+                enable_all_clicks()
+                profile_path = get_path("profiles")
+                if os.path.isdir(profile_path):
+                    shutil.rmtree(profile_path)
+                    print(f"Deleted folder: {profile_path}")
+                else:
+                    print(f"Nothing found at: {profile_path}")
+                state.should_abort = False
+                tools_tab = tab_tools.build_tools_tab()
+                state.notebook.add(tools_tab, text="Tools")
 
-            flash_message(msg_lbl, msg_var, "Failed to launch", status='error')
+                flash_message(msg_lbl, msg_var, "Failed to launch", status='error')
 
-            for widget in frame.winfo_children(): # Enable all buttons
-                if isinstance(widget, ttk.Button):
-                    widget.state(['!disabled'])
-        else:
-            state.root.after(100, lambda: wait_for_both(attempt + 1))
+                for widget in frame.winfo_children(): # Enable all buttons
+                    if isinstance(widget, ttk.Button):
+                        widget.state(['!disabled'])
+        
+        # Run the check in a background thread so it doesn't block the UI
+        threading.Thread(target=check_ready, daemon=True).start()
 
     msg_var.set("Launching Chrome...")
     wait_for_both()
@@ -352,27 +413,57 @@ def build_home_tab(parent, msg):
             state.logged_in = True  # Set logged in state
             
             # Fetch user settings BEFORE launching browsers
-            try:
-                from constants import IP, PORT
-                resp = requests.post(
-                    f"http://{IP}:{PORT}/get_user_settings",
-                    json={"username": username},
-                    timeout=5
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                
-                # Update config with user settings BEFORE browser launch
-                user_zoom = data.get("zoom", "200")
-                user_theme = data.get("theme", "dark")
-                
-                state.zoom_var.set(user_zoom)
-                config.cfg["zoom_var"] = user_zoom
-                config.cfg["theme"] = user_theme
-                
-                print(f"[LOGIN] Loaded user settings: theme={user_theme}, zoom={user_zoom}")
-            except Exception as e:
-                print(f"[WARNING] Failed to load user settings, using defaults: {e}")
+            user_theme = "dark"  # Default to dark mode
+            user_zoom = "200"    # Default zoom
+            
+            # OPTIMIZATION: Check cache first (pre-loaded during splash screen)
+            if username in state.user_settings_cache:
+                cached_settings = state.user_settings_cache[username]
+                user_theme = cached_settings.get("theme", "dark")
+                user_zoom = cached_settings.get("zoom", "200")
+                print(f"[LOGIN] ✓ Loaded user settings from CACHE: theme={user_theme}, zoom={user_zoom}")
+            else:
+                # Cache miss - user may have been added after app launch
+                # Fallback to API call
+                print(f"[LOGIN] User '{username}' not in cache, fetching from API...")
+                try:
+                    from constants import IP, PORT
+                    resp = requests.post(
+                        f"http://{IP}:{PORT}/get_user_settings",
+                        json={"username": username},
+                        timeout=5
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    
+                    # Update with user settings from database
+                    user_zoom = data.get("zoom", "200")
+                    user_theme = data.get("theme", "dark")
+                    
+                    # Store in cache for next time
+                    state.user_settings_cache[username] = {
+                        "theme": user_theme,
+                        "zoom": user_zoom
+                    }
+                    
+                    print(f"[LOGIN] ✓ Loaded user settings from API: theme={user_theme}, zoom={user_zoom}")
+                except Exception as e:
+                    print(f"[WARNING] Failed to load user settings from API, using defaults (dark mode): {e}")
+            
+            # ALWAYS set these in config, even if all lookups fail (use defaults)
+            state.zoom_var.set(user_zoom)
+            config.cfg["zoom_var"] = user_zoom
+            config.cfg["theme"] = user_theme
+            print(f"[LOGIN] Applied theme to config.cfg: theme={config.cfg['theme']}, zoom={config.cfg['zoom_var']}")
+            print(f"[LOGIN] DEBUG: config.cfg type: {type(config.cfg)}")
+            print(f"[LOGIN] DEBUG: config.cfg.get('theme'): {config.cfg.get('theme', 'NOT_FOUND')}")
+            print(f"[LOGIN] DEBUG: config.cfg id: {id(config.cfg)}")
+            print(f"[LOGIN] DEBUG: config.cfg contents: {dict(config.cfg)}")
+            
+            # Start performance timer
+            import time
+            state.login_start_time = time.time()
+            print(f"[PERF] ⏱️  Starting browser launch timer at login button press")
             
             hide_login_form()
             show_main_ui(parent, frame)
