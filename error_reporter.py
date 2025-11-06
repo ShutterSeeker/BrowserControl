@@ -15,6 +15,15 @@ import hashlib
 from pathlib import Path
 
 
+# Try to import VERSION from constants.py, cache the result
+_APP_VERSION = "Unknown"
+try:
+    from constants import VERSION
+    _APP_VERSION = VERSION
+except (ImportError, AttributeError):
+    pass
+
+
 # Set up logger
 logger = logging.getLogger("BrowserControl")
 logger.setLevel(logging.DEBUG)
@@ -64,6 +73,7 @@ def get_system_info():
         "architecture": platform.machine(),
         "processor": platform.processor(),
         "python_version": platform.python_version(),
+        "app_version": _APP_VERSION,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -193,6 +203,7 @@ def report_critical_error(error_type, error_message, traceback_str=None,
 - **Platform:** {system_info['platform']} {system_info['platform_release']}
 - **Architecture:** {system_info['architecture']}
 - **Python Version:** {system_info['python_version']}
+- **App Version:** {system_info['app_version']}
 - **Timestamp:** {system_info['timestamp']}
 
 **Traceback:**
