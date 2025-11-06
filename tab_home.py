@@ -507,17 +507,9 @@ def build_home_tab(parent, msg):
                         state.root.after(0, lambda: update_btn.config(text="Downloading..."))
                         
                         if install_update_direct(release_info['exe_url']):
-                            # Show message and exit after user clicks OK
+                            # Exit silently to allow PowerShell script to proceed
                             def exit_app():
-                                messagebox.showinfo(
-                                    "Update Ready",
-                                    f"Installing version {release_info['version']}.\n\n"
-                                    "A PowerShell window will open to complete the update.\n\n"
-                                    "If it doesn't open automatically, run:\n"
-                                    "C:\\BrowserControl\\update_browsercontrol.ps1\n\n"
-                                    "Click OK to close BrowserControl."
-                                )
-                                # Force exit immediately
+                                # Force exit immediately without dialog
                                 import sys
                                 sys.exit(0)
                             
