@@ -15,6 +15,15 @@ import hashlib
 from pathlib import Path
 
 
+# Try to import VERSION from constants.py, cache the result
+_APP_VERSION = "Unknown"
+try:
+    from constants import VERSION
+    _APP_VERSION = VERSION
+except (ImportError, AttributeError):
+    pass
+
+
 # Set up logger
 logger = logging.getLogger("BrowserControl")
 logger.setLevel(logging.DEBUG)
@@ -56,14 +65,6 @@ def get_system_info():
     except:
         hostname = "Unknown"
     
-    # Get application version
-    app_version = "Unknown"
-    try:
-        from constants import VERSION
-        app_version = VERSION
-    except (ImportError, AttributeError):
-        pass
-    
     return {
         "hostname": hostname,
         "platform": platform.system(),
@@ -72,7 +73,7 @@ def get_system_info():
         "architecture": platform.machine(),
         "processor": platform.processor(),
         "python_version": platform.python_version(),
-        "app_version": app_version,
+        "app_version": _APP_VERSION,
         "timestamp": datetime.now().isoformat()
     }
 
