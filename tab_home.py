@@ -451,7 +451,8 @@ def build_home_tab(parent, msg):
                 if self.mousewheel_binding:
                     try:
                         self.winfo_toplevel().unbind_all("<MouseWheel>")
-                    except Exception:
+                    except tk.TclError:
+                        # Widget may have been destroyed already
                         pass
                     self.mousewheel_binding = None
                 
