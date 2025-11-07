@@ -54,7 +54,7 @@ def build_settings_tab(parent):
             
             # Show check for updates button when not logged in
             if check_updates_btn:
-                check_updates_btn.grid()
+                check_updates_btn.grid(row=5, column=0, columnspan=2, pady=5)
             return
             
         # Read from already-populated state/config (loaded at login time)
@@ -224,30 +224,39 @@ def build_settings_tab(parent):
                 
                 if update_available:
                     # Update is available - show status and start download
-                    state.root.after(0, lambda: check_updates_btn.config(text="Downloading..."))
-                    state.root.after(0, lambda: flash_message(msg_lbl, msg_var, f"Update found: v{result['version']}", status='success'))
+                    def update_ui_downloading():
+                        check_updates_btn.config(text="Downloading...")
+                        flash_message(msg_lbl, msg_var, f"Update found: v{result['version']}", status='success')
+                    
+                    state.root.after(0, update_ui_downloading)
                     
                     # Install the update
                     if install_update_direct(result['exe_url']):
                         # Exit silently to allow PowerShell script to proceed
-                        def exit_app():
-                            import sys
-                            sys.exit(0)
-                        
-                        state.root.after(0, exit_app)
+                        import sys
+                        state.root.after(0, sys.exit)
                         return
                     else:
                         # Installation failed
-                        state.root.after(0, lambda: flash_message(msg_lbl, msg_var, "Update installation failed", status='error'))
-                        state.root.after(0, lambda: check_updates_btn.config(state="normal", text="Check for updates"))
+                        def update_ui_failed():
+                            flash_message(msg_lbl, msg_var, "Update installation failed", status='error')
+                            check_updates_btn.config(state="normal", text="Check for updates")
+                        
+                        state.root.after(0, update_ui_failed)
                 else:
                     # No update available or error
-                    state.root.after(0, lambda: flash_message(msg_lbl, msg_var, result, status='normal'))
-                    state.root.after(0, lambda: check_updates_btn.config(state="normal", text="Check for updates"))
+                    def update_ui_no_update():
+                        flash_message(msg_lbl, msg_var, result, status='normal')
+                        check_updates_btn.config(state="normal", text="Check for updates")
+                    
+                    state.root.after(0, update_ui_no_update)
                     
             except Exception as e:
-                state.root.after(0, lambda: flash_message(msg_lbl, msg_var, f"Update check failed: {str(e)}", status='error'))
-                state.root.after(0, lambda: check_updates_btn.config(state="normal", text="Check for updates"))
+                def update_ui_error():
+                    flash_message(msg_lbl, msg_var, f"Update check failed: {str(e)}", status='error')
+                    check_updates_btn.config(state="normal", text="Check for updates")
+                
+                state.root.after(0, update_ui_error)
         
         # Run check in background thread
         threading.Thread(target=check_and_install, daemon=True).start()
