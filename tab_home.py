@@ -411,7 +411,7 @@ def build_home_tab(parent, msg):
                     canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
                 
                 # Store the binding so we can clean it up later
-                self.mousewheel_binding = lambda e: on_mousewheel(e)
+                self.mousewheel_binding = on_mousewheel
                 self.winfo_toplevel().bind_all("<MouseWheel>", self.mousewheel_binding)
             else:
                 container = self.popup
@@ -451,7 +451,7 @@ def build_home_tab(parent, msg):
                 if self.mousewheel_binding:
                     try:
                         self.winfo_toplevel().unbind_all("<MouseWheel>")
-                    except:
+                    except Exception:
                         pass
                     self.mousewheel_binding = None
                 
