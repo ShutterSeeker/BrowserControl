@@ -312,6 +312,7 @@ def build_home_tab(parent, msg):
             super().__init__(master, **kwargs)
             self.suggestions = load_usernames()
             self.popup = None
+            self.mousewheel_binding = None
             self.bind("<KeyRelease>", self.on_key_release)
             self.bind("<FocusIn>", self.show_suggestions)
             self.bind("<FocusOut>", lambda e: self.master.after(150, self.hide_popup))  # delay so clicks can register
@@ -366,14 +367,16 @@ def build_home_tab(parent, msg):
             y_above = self.winfo_rooty() - popup_height - 2  # position above entry
             
             # Check if popup would go off bottom of screen
+            space_below = screen_height - y_below
             if y_below + popup_height > screen_height:
-                # Position above entry if there's more room
-                if y_above >= 0 or y_above > (y_below + popup_height - screen_height):
+                space_above = self.winfo_rooty() - 2
+                # Position above entry if there's more space above than below
+                if y_above >= 0 and space_above >= space_below:
                     y = max(0, y_above)  # Above, but not off top of screen
                 else:
-                    # Not enough room above either, position at bottom with adjusted height
+                    # Not enough room above, adjust height to fit below
                     y = y_below
-                    available_height = screen_height - y_below - 10  # 10px margin
+                    available_height = space_below - 10  # 10px margin
                     popup_height = min(popup_height, available_height)
             else:
                 y = y_below
@@ -406,12 +409,10 @@ def build_home_tab(parent, msg):
                 # Enable mousewheel scrolling
                 def on_mousewheel(event):
                     canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-                canvas.bind_all("<MouseWheel>", on_mousewheel)
                 
-                # Clean up mousewheel binding when popup is destroyed
-                def on_popup_destroy():
-                    canvas.unbind_all("<MouseWheel>")
-                self.popup.bind("<Destroy>", lambda e: on_popup_destroy())
+                # Store the binding so we can clean it up later
+                self.mousewheel_binding = lambda e: on_mousewheel(e)
+                self.winfo_toplevel().bind_all("<MouseWheel>", self.mousewheel_binding)
             else:
                 container = self.popup
 
@@ -446,6 +447,14 @@ def build_home_tab(parent, msg):
 
         def hide_popup(self):
             if self.popup:
+                # Clean up mousewheel binding if it exists
+                if self.mousewheel_binding:
+                    try:
+                        self.winfo_toplevel().unbind_all("<MouseWheel>")
+                    except:
+                        pass
+                    self.mousewheel_binding = None
+                
                 self.popup.destroy()
                 self.popup = None
 
