@@ -2,10 +2,12 @@ import tkinter as tk
 from tkinter import ttk
 import config, state
 import requests
+import threading
 from constants import DEPARTMENTS, ZOOM_OPTIONS, IP, PORT
 from settings import save_settings, save_window_geometry
 from utils import flash_message
 from tab_tools import build_tools_tab
+from updater import check_and_prompt_update, install_update_direct
 
 def build_settings_tab(parent):
     frame = tk.Frame(parent, bg="#2b2b2b", padx=10, pady=10)
@@ -34,10 +36,13 @@ def build_settings_tab(parent):
     user_settings_frame = None
     zoom_cb = None
     dark_cb = None
+    
+    # Check for updates button (shown only when not logged in)
+    check_updates_btn = None
 
     # Load user settings UI (data already loaded at login time)
     def load_user_settings():
-        nonlocal user_settings_frame, zoom_cb, dark_cb
+        nonlocal user_settings_frame, zoom_cb, dark_cb, check_updates_btn
         
         if not state.logged_in or not state.username:
             # Remove user settings if they exist
@@ -46,6 +51,10 @@ def build_settings_tab(parent):
                 user_settings_frame = None
                 zoom_cb = None
                 dark_cb = None
+            
+            # Show check for updates button when not logged in
+            if check_updates_btn:
+                check_updates_btn.grid(row=5, column=0, columnspan=2, pady=5)
             return
             
         # Read from already-populated state/config (loaded at login time)
@@ -79,6 +88,10 @@ def build_settings_tab(parent):
                 bg="#2b2b2b", fg="white", selectcolor="#2b2b2b"
             )
             dark_cb.pack(pady=5)
+        
+        # Hide check for updates button when logged in
+        if check_updates_btn:
+            check_updates_btn.grid_remove()
     
     # Apply theme changes to live browser sessions
     def apply_theme_to_browsers(theme):
@@ -195,6 +208,65 @@ def build_settings_tab(parent):
             flash_message(msg_lbl, msg_var, "Error saving window position", status='error')
 
     ttk.Button(frame, text="Save position", command=on_save_window_geometry).grid(row=4, column=0, columnspan=2, pady=5)
+    
+    # Check for updates button (only shown when not logged in)
+    def on_check_for_updates():
+        """Check for updates and auto-install if found"""
+        nonlocal check_updates_btn
+        
+        # Disable button during check
+        check_updates_btn.config(state="disabled", text="Checking...")
+        
+        def check_and_install():
+            try:
+                # Check for updates
+                update_available, result = check_and_prompt_update()
+                
+                if update_available:
+                    # Update is available - show status and start download
+                    def update_ui_downloading():
+                        check_updates_btn.config(text="Downloading...")
+                        flash_message(msg_lbl, msg_var, f"Update found: v{result['version']}", status='success')
+                    
+                    state.root.after(0, update_ui_downloading)
+                    
+                    # Install the update
+                    if install_update_direct(result['exe_url']):
+                        # Exit silently to allow PowerShell script to proceed
+                        import sys
+                        state.root.after(0, sys.exit)
+                        return
+                    else:
+                        # Installation failed
+                        def update_ui_failed():
+                            flash_message(msg_lbl, msg_var, "Update installation failed", status='error')
+                            check_updates_btn.config(state="normal", text="Check for updates")
+                        
+                        state.root.after(0, update_ui_failed)
+                else:
+                    # No update available or error
+                    def update_ui_no_update():
+                        flash_message(msg_lbl, msg_var, result, status='normal')
+                        check_updates_btn.config(state="normal", text="Check for updates")
+                    
+                    state.root.after(0, update_ui_no_update)
+                    
+            except Exception as e:
+                def update_ui_error():
+                    flash_message(msg_lbl, msg_var, f"Update check failed: {str(e)}", status='error')
+                    check_updates_btn.config(state="normal", text="Check for updates")
+                
+                state.root.after(0, update_ui_error)
+        
+        # Run check in background thread
+        threading.Thread(target=check_and_install, daemon=True).start()
+    
+    check_updates_btn = ttk.Button(frame, text="Check for updates", command=on_check_for_updates)
+    check_updates_btn.grid(row=5, column=0, columnspan=2, pady=5)
+    
+    # Hide the button initially if user is logged in
+    if state.logged_in:
+        check_updates_btn.grid_remove()
 
     frame.columnconfigure(0, weight=1)
     frame.columnconfigure(1, weight=1)
