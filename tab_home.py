@@ -283,41 +283,134 @@ def build_home_tab(parent, msg):
         if os.path.exists(user_path):
             try:
                 with open(user_path, "r") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    
+                # Handle backwards compatibility
+                if data and isinstance(data[0], str):
+                    # Old format: ["username1", "username2"]
+                    # Convert to new format with current timestamp, removing duplicates
+                    import time
+                    current_time = time.time()
+                    seen_usernames = set()
+                    converted_data = []
+                    
+                    for username in data:
+                        username_lower = username.lower()
+                        if username_lower not in seen_usernames:
+                            seen_usernames.add(username_lower)
+                            converted_data.append({"username": username_lower, "last_login": current_time})
+                    
+                    # Sort by most recent login (newest first)
+                    converted_data.sort(key=lambda x: x["last_login"], reverse=True)
+                    
+                    # Save converted format immediately
+                    with open(user_path, "w") as f:
+                        json.dump(converted_data, f, indent=2)
+                    
+                    return converted_data
+                
+                # Always sort the loaded data by most recent login
+                data.sort(key=lambda x: x["last_login"], reverse=True)
+                return data
             except:
                 return []
         return []
 
     def save_usernames(usernames):
         with open(user_path, "w") as f:
-            json.dump(usernames, f)
+            json.dump(usernames, f, indent=2)
 
     def remember_username(username):
+        import time
         usernames = load_usernames()
-        # Store username in lowercase
         username_lower = username.lower()
-        # Check if it already exists (case-insensitive)
-        if not any(u.lower() == username_lower for u in usernames):
-            usernames.append(username_lower)
-            save_usernames(usernames)
+        current_time = time.time()
+        
+        # Find existing user (case-insensitive)
+        existing_index = None
+        for i, user_data in enumerate(usernames):
+            if user_data["username"].lower() == username_lower:
+                existing_index = i
+                break
+        
+        if existing_index is not None:
+            # Update existing user's timestamp
+            usernames[existing_index]["last_login"] = current_time
+        else:
+            # Add new user
+            usernames.append({"username": username_lower, "last_login": current_time})
+        
+        # Sort by most recent login (newest first)
+        usernames.sort(key=lambda x: x["last_login"], reverse=True)
+        save_usernames(usernames)
 
     def remove_username(username):
         usernames = load_usernames()
-        if username in usernames:
-            usernames.remove(username)
-            save_usernames(usernames)
+        # Find and remove user (case-insensitive)
+        usernames = [user_data for user_data in usernames if user_data["username"].lower() != username.lower()]
+        save_usernames(usernames)
 
     class AutoSuggestEntry(tk.Entry):
         def __init__(self, master, **kwargs):
             super().__init__(master, **kwargs)
-            self.suggestions = load_usernames()
+            usernames_data = load_usernames()
+            # Extract just the usernames for suggestions (sorted by most recent)
+            self.suggestions = [user_data["username"] for user_data in usernames_data]
             self.popup = None
             self.mousewheel_binding = None
+            self.deleting = False  # Flag to prevent closing on delete
+            self.selected_index = -1  # Track selected suggestion
+            self.filtered_matches = []  # Current filtered matches
             self.bind("<KeyRelease>", self.on_key_release)
+            self.bind("<KeyPress>", self.on_key_press)
             self.bind("<FocusIn>", self.show_suggestions)
-            self.bind("<FocusOut>", lambda e: self.master.after(150, self.hide_popup))  # delay so clicks can register
+            self.bind("<FocusOut>", self.on_focus_out)
         
+        def on_key_press(self, event=None):
+            """Handle special key presses for navigation"""
+            if not self.popup or not self.filtered_matches:
+                return
+            
+            if event.keysym == 'Down':
+                if self.selected_index == -1:
+                    # First time pressing down - select first item
+                    self.selected_index = 0
+                elif self.selected_index == len(self.filtered_matches) - 1:
+                    # At bottom - wrap to top
+                    self.selected_index = 0
+                else:
+                    # Move down
+                    self.selected_index += 1
+                self.update_selection_highlight()
+                self.scroll_to_selected()
+                return "break"  # Prevent default behavior
+            elif event.keysym == 'Up':
+                if self.selected_index == -1:
+                    # First time pressing up - select last item
+                    self.selected_index = len(self.filtered_matches) - 1
+                elif self.selected_index == 0:
+                    # At top - wrap to bottom
+                    self.selected_index = len(self.filtered_matches) - 1
+                else:
+                    # Move up
+                    self.selected_index -= 1
+                self.update_selection_highlight()
+                self.scroll_to_selected()
+                return "break"  # Prevent default behavior
+            elif event.keysym in ('Return', 'Tab'):
+                if self.selected_index >= 0 and self.selected_index < len(self.filtered_matches):
+                    selected_user = self.filtered_matches[self.selected_index]
+                    self.select_user(selected_user)
+                    return "break"  # Prevent default behavior
+            elif event.keysym == 'Escape':
+                self.hide_popup()
+                return "break"
+
         def on_key_release(self, event=None):
+            # Skip processing for navigation keys
+            if event and event.keysym in ('Down', 'Up', 'Return', 'Tab', 'Escape'):
+                return
+            
             # Convert to lowercase as user types
             current_pos = self.index(tk.INSERT)
             current_text = self.get()
@@ -328,122 +421,278 @@ def build_home_tab(parent, msg):
                 self.insert(0, lowercase_text)
                 self.icursor(current_pos)
             
+            # Reset selection when typing
+            self.selected_index = -1
             self.show_suggestions(event)
+        
+        def on_focus_out(self, event=None):
+            # Only hide popup if we're not deleting
+            if not self.deleting:
+                self.master.after(150, self.hide_popup)
 
         def show_suggestions(self, event=None):
+            # Destroy existing popup
             if self.popup:
                 self.popup.destroy()
 
+            # Filter usernames case-insensitively
             val = self.get().lower()
-            # Normalize all usernames to lowercase for display
             matches = [u.lower() for u in self.suggestions if val in u.lower()]
-
+            self.filtered_matches = matches  # Store for navigation
             if not matches:
+                self.selected_index = -1
                 return
 
-            self.popup = tk.Toplevel(self)
-            self.popup.attributes("-topmost", True)
-            self.popup.overrideredirect(True)  # no title bar
-            self.popup.configure(bg="white", bd=1, relief="solid")
-
-            # Calculate dimensions
+            # --- Geometry calculations ---
             row_height = 33
-            max_visible_rows = 10  # Maximum rows to show before scrolling
+            max_visible_rows = 10
             visible_rows = min(len(matches), max_visible_rows)
             popup_height = row_height * visible_rows
-            
-            font = tkfont.Font(font=self.cget("font"))
-            longest_text = max(matches, key=lambda s: len(s))
-            text_width_px = font.measure(longest_text)
-            popup_width = text_width_px + 80
 
-            # Get screen dimensions
+            font = tkfont.Font(font=self.cget("font"))
+            longest_text = max(matches, key=lambda s: len(s)) if matches else ""
+            text_width_px = font.measure(longest_text)
+            # Reserve space for scrollbar (always) and delete column
+            scrollbar_width = 16
+            delete_col_width = 38  # includes padding
+            popup_width = text_width_px + delete_col_width + scrollbar_width + 40  # base padding
+
             screen_width = self.winfo_screenwidth()
             screen_height = self.winfo_screenheight()
-            
-            # Calculate initial position (below the entry)
-            x = self.winfo_rootx() + 30  # shift right of the entry
-            y_below = self.winfo_rooty() + self.winfo_height() + 2  # position below entry
-            y_above = self.winfo_rooty() - popup_height - 2  # position above entry
-            
-            # Check if popup would go off bottom of screen
+            x = self.winfo_rootx() + 30
+            y_below = self.winfo_rooty() + self.winfo_height() + 2
+            y_above = self.winfo_rooty() - popup_height - 2
+
             space_below = screen_height - y_below
             if y_below + popup_height > screen_height:
                 space_above = self.winfo_rooty() - 2
-                # Position above entry if there's more space above than below
                 if y_above >= 0 and space_above >= space_below:
-                    y = max(0, y_above)  # Above, but not off top of screen
+                    y = max(0, y_above)
                 else:
-                    # Not enough room above, adjust height to fit below
                     y = y_below
-                    available_height = space_below - 10  # 10px margin
+                    available_height = space_below - 10
                     popup_height = min(popup_height, available_height)
             else:
                 y = y_below
-            
-            # Ensure x doesn't go off right edge of screen
+
             if x + popup_width > screen_width:
                 x = screen_width - popup_width - 10
 
+            # --- Build popup ---
+            self.popup = tk.Toplevel(self)
+            self.popup.attributes("-topmost", True)
+            self.popup.overrideredirect(True)
+            self.popup.configure(bg="#2b2b2b", bd=1, relief="solid")
             self.popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
 
-            # Create canvas with scrollbar if needed
-            if len(matches) > max_visible_rows:
-                canvas = tk.Canvas(self.popup, bg="#2b2b2b", highlightthickness=0)
-                scrollbar = tk.Scrollbar(self.popup, orient="vertical", command=canvas.yview)
-                scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
+            # Determine if scrollbar is needed
+            needs_scrollbar = len(matches) > max_visible_rows
+            
+            # Store canvas reference for scrolling
+            self.canvas = None
+            
+            # Root container - different layout based on scrollbar need
+            if needs_scrollbar:
+                container = tk.Frame(self.popup, bg="#2b2b2b")
+                container.pack(fill="both", expand=True)
+                container.grid_rowconfigure(0, weight=1)  # Make row expandable
+                container.grid_columnconfigure(0, weight=1)  # canvas column expandable
+                container.grid_columnconfigure(1, weight=0, minsize=scrollbar_width)  # scrollbar column fixed
+
+                # Canvas + internal frame
+                canvas = tk.Canvas(container, bg="#2b2b2b", highlightthickness=0)
+                canvas.grid(row=0, column=0, sticky="nsew")
+                inner = tk.Frame(canvas, bg="#2b2b2b")
+                canvas_window = canvas.create_window((0, 0), window=inner, anchor="nw")
                 
-                scrollable_frame.bind(
-                    "<Configure>",
-                    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-                )
-                
-                canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+                # Store canvas reference for scrolling
+                self.canvas = canvas
+
+                # Scrollbar for when needed
+                style = ttk.Style()
+                try:
+                    style.theme_use("clam")
+                except tk.TclError:
+                    pass
+                style.configure("Suggest.Vertical.TScrollbar", background="#4c4c4c", troughcolor="#1a1a1a", bordercolor="#1a1a1a", arrowcolor="#6c6c6c")
+                style.map("Suggest.Vertical.TScrollbar", background=[("active", "#6c6c6c"), ("pressed", "#7c7c7c")])
+                scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview, style="Suggest.Vertical.TScrollbar")
+                scrollbar.grid(row=0, column=1, sticky="nsew")
                 canvas.configure(yscrollcommand=scrollbar.set)
+
+                # Configure canvas window to fill available width
+                def configure_canvas_window(event=None):
+                    canvas_width = canvas.winfo_width()
+                    if canvas_width > 1:
+                        canvas.itemconfig(canvas_window, width=canvas_width)
                 
-                canvas.pack(side="left", fill="both", expand=True)
-                scrollbar.pack(side="right", fill="y")
+                canvas.bind("<Configure>", configure_canvas_window)
                 
-                container = scrollable_frame
-                
-                # Enable mousewheel scrolling
+                container_frame = inner
+            else:
+                # No scrollbar needed - direct container
+                container_frame = self.popup
+
+            # Mousewheel support (only when scrollbar is present)
+            if needs_scrollbar:
                 def on_mousewheel(event):
                     canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-                
-                # Store the binding so we can clean it up later
+                self.winfo_toplevel().bind_all("<MouseWheel>", on_mousewheel)
                 self.mousewheel_binding = on_mousewheel
-                self.winfo_toplevel().bind_all("<MouseWheel>", self.mousewheel_binding)
-            else:
-                container = self.popup
 
-            for user in matches:
-                row = tk.Frame(container, bg="#2b2b2b")
-                row.pack(fill="x")
+            # Configure container frame to expand properly
+            container_frame.grid_columnconfigure(0, weight=1) if hasattr(container_frame, 'grid_columnconfigure') else None
+            if hasattr(container_frame, 'grid_columnconfigure'):
+                container_frame.grid_columnconfigure(1, minsize=delete_col_width, weight=0)
 
-                lbl = tk.Label(row, text=user, font=30, pady=5, anchor="w", bg="#2b2b2b", fg="white")
-                lbl.pack(fill="both", expand=True, side="left")
+            # Store row widgets for selection highlighting
+            self.row_widgets = []
+            
+            # Populate rows (grid for consistent layout)
+            for i, user in enumerate(matches):
+                row = tk.Frame(container_frame, bg="#2b2b2b", height=row_height)
+                if needs_scrollbar:
+                    row.grid(row=i, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
+                else:
+                    row.pack(fill="x")
+                
+                row.grid_columnconfigure(0, weight=1)
+                row.grid_columnconfigure(1, minsize=delete_col_width, weight=0)
+                row.grid_propagate(False)  # Keep fixed height
 
-                del_lbl = tk.Label(row, text="x", fg="red", bg="#2b2b2b", cursor="hand2")
-                del_lbl.pack(side="right", padx=5)
+                lbl = tk.Label(row, text=user, font=30, pady=5, padx=10, anchor="w", bg="#2b2b2b", fg="white")
+                lbl.grid(row=0, column=0, sticky="ew")
+
+                del_frame = tk.Frame(row, bg="#2b2b2b", width=delete_col_width - 8, height=row_height - 6)
+                del_frame.grid(row=0, column=1, padx=(4, 4), pady=3, sticky="e")
+                del_frame.grid_propagate(False)
+                del_lbl = tk.Label(del_frame, text="✕", fg="red", bg="#2b2b2b", cursor="hand2", font=("Segoe UI", 10, "bold"))
+                del_lbl.place(relx=0.5, rely=0.5, anchor="center")
                 del_lbl.bind("<Button-1>", partial(self.delete_user, user))
+                
+                # Store widgets for selection highlighting
+                self.row_widgets.append((row, lbl, del_frame, del_lbl))
 
-                def on_enter(e, r=row, l=lbl, d=del_lbl):
-                    r.configure(bg="#7B7B7B")
-                    l.configure(bg="#7B7B7B")
-                    d.configure(bg="#7B7B7B")
+                def make_hover_handlers(row_widget, lbl_widget, frame_widget, del_widget, row_index):
+                    def on_enter_row(event):
+                        # Don't override keyboard selection highlighting
+                        if self.selected_index != row_index:
+                            color = "#7B7B7B"
+                            for widget in (row_widget, lbl_widget, frame_widget, del_widget):
+                                widget.configure(bg=color)
+                    
+                    def on_leave_row(event):
+                        # Restore keyboard selection or normal color
+                        if self.selected_index == row_index:
+                            color = "#5c5c5c"  # Keep keyboard selection color
+                        else:
+                            color = "#2b2b2b"  # Normal color
+                        for widget in (row_widget, lbl_widget, frame_widget, del_widget):
+                            widget.configure(bg=color)
+                    
+                    def on_enter_x_only(event):
+                        # Only highlight X button if not keyboard selected
+                        if self.selected_index != row_index:
+                            frame_widget.configure(bg="#7B7B7B")
+                            del_widget.configure(bg="#7B7B7B")
+                    
+                    def on_leave_x_only(event):
+                        # Reset X button based on selection state
+                        if self.selected_index == row_index:
+                            color = "#5c5c5c"  # Keep keyboard selection color
+                        else:
+                            color = "#2b2b2b"  # Normal color
+                        frame_widget.configure(bg=color)
+                        del_widget.configure(bg=color)
+                    
+                    return on_enter_row, on_leave_row, on_enter_x_only, on_leave_x_only
 
-
-                def on_leave(e, r=row, l=lbl, d=del_lbl):
-                    r.configure(bg="#2b2b2b")
-                    l.configure(bg="#2b2b2b")
-                    d.configure(bg="#2b2b2b")
-
-                row.bind("<Enter>", on_enter)
-                row.bind("<Leave>", on_leave)
-                lbl.bind("<Enter>", on_enter)
-                lbl.bind("<Leave>", on_leave)
+                on_enter_row, on_leave_row, on_enter_x_only, on_leave_x_only = make_hover_handlers(row, lbl, del_frame, del_lbl, i)
+                
+                # Row and label hover - highlight everything
+                row.bind("<Enter>", on_enter_row)
+                row.bind("<Leave>", on_leave_row)
+                lbl.bind("<Enter>", on_enter_row)
+                lbl.bind("<Leave>", on_leave_row)
                 lbl.bind("<Button-1>", partial(self.select_user, user))
+                
+                # X button hover - only highlight X
+                del_frame.bind("<Enter>", on_enter_x_only)
+                del_frame.bind("<Leave>", on_leave_x_only)
+                del_lbl.bind("<Enter>", on_enter_x_only)
+                del_lbl.bind("<Leave>", on_leave_x_only)
 
+            # Update scrollregion when scrollbar is present
+            if needs_scrollbar:
+                def _update_region(event=None):
+                    canvas.configure(scrollregion=canvas.bbox("all"))
+                inner.bind("<Configure>", _update_region)
+                self.popup.after(20, _update_region)
+
+
+        def update_selection_highlight(self):
+            """Update visual highlighting for keyboard selection"""
+            if not hasattr(self, 'row_widgets') or not self.row_widgets:
+                return
+            
+            # Clear all highlights first
+            for i, (row, lbl, del_frame, del_lbl) in enumerate(self.row_widgets):
+                if i == self.selected_index:
+                    # Highlight selected row
+                    color = "#5c5c5c"  # Different color for keyboard selection
+                    for widget in (row, lbl, del_frame, del_lbl):
+                        widget.configure(bg=color)
+                else:
+                    # Reset to normal
+                    color = "#2b2b2b"
+                    for widget in (row, lbl, del_frame, del_lbl):
+                        widget.configure(bg=color)
+
+        def scroll_to_selected(self):
+            """Scroll the canvas to ensure selected item is visible"""
+            if not self.canvas or self.selected_index < 0 or not hasattr(self, 'row_widgets'):
+                return
+            
+            if self.selected_index >= len(self.row_widgets):
+                return
+            
+            # Get the selected row widget
+            selected_row = self.row_widgets[self.selected_index][0]
+            
+            # Get canvas dimensions
+            canvas_height = self.canvas.winfo_height()
+            if canvas_height <= 1:
+                return
+            
+            # Get row position and height
+            row_height = 33  # Same as defined earlier
+            row_top = self.selected_index * row_height
+            row_bottom = row_top + row_height
+            
+            # Get current scroll region
+            scroll_region = self.canvas.cget("scrollregion").split()
+            if len(scroll_region) < 4:
+                return
+            
+            total_height = float(scroll_region[3])
+            if total_height <= canvas_height:
+                return  # No scrolling needed
+            
+            # Get current view
+            view_top, view_bottom = self.canvas.yview()
+            visible_top = view_top * total_height
+            visible_bottom = view_bottom * total_height
+            
+            # Check if selected row is visible
+            if row_top < visible_top:
+                # Row is above visible area - scroll up
+                new_top = max(0, row_top - 10)  # 10px padding
+                self.canvas.yview_moveto(new_top / total_height)
+            elif row_bottom > visible_bottom:
+                # Row is below visible area - scroll down
+                new_bottom = min(total_height, row_bottom + 10)  # 10px padding
+                new_top = max(0, new_bottom - canvas_height)
+                self.canvas.yview_moveto(new_top / total_height)
 
         def hide_popup(self):
             if self.popup:
@@ -458,14 +707,20 @@ def build_home_tab(parent, msg):
                 
                 self.popup.destroy()
                 self.popup = None
+                self.selected_index = -1
+                self.filtered_matches = []
 
         def select_user(self, username, event=None):
             self.delete(0, tk.END)
             self.insert(0, username)
             self.hide_popup()
+            # Move focus to password field
             password_entry.focus_set()
 
         def delete_user(self, username, event=None):
+            # Set flag to prevent popup from closing
+            self.deleting = True
+            
             # Find the original username in suggestions (might have different case)
             original_username = None
             for u in self.suggestions:
@@ -475,8 +730,14 @@ def build_home_tab(parent, msg):
             
             if original_username:
                 remove_username(original_username)
-                self.suggestions = load_usernames()
+                # Reload suggestions (now sorted by most recent)
+                usernames_data = load_usernames()
+                self.suggestions = [user_data["username"] for user_data in usernames_data]
+                # Refresh the popup without closing it
                 self.show_suggestions()
+            
+            # Reset flag after a short delay
+            self.master.after(200, lambda: setattr(self, 'deleting', False))
 
 
     frame = tk.Frame(parent, bg="#2b2b2b", padx=20, pady=20)

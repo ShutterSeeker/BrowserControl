@@ -1,7 +1,7 @@
 #constants.py.template
 # Copy this file to constants.py and fill in your actual values
 
-VERSION = "2.1.0"
+VERSION = "2.1.5"
 DC_TITLE = "DC - Google Chrome"
 SC_TITLE = "SC - Google Chrome"
 MUTEX_NAME = "BrowserControlMutex"
