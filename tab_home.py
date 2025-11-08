@@ -294,8 +294,11 @@ def build_home_tab(parent, msg):
 
     def remember_username(username):
         usernames = load_usernames()
-        if username not in usernames:
-            usernames.append(username)
+        # Store username in lowercase
+        username_lower = username.lower()
+        # Check if it already exists (case-insensitive)
+        if not any(u.lower() == username_lower for u in usernames):
+            usernames.append(username_lower)
             save_usernames(usernames)
 
     def remove_username(username):
@@ -309,16 +312,31 @@ def build_home_tab(parent, msg):
             super().__init__(master, **kwargs)
             self.suggestions = load_usernames()
             self.popup = None
-            self.bind("<KeyRelease>", self.show_suggestions)
+            self.mousewheel_binding = None
+            self.bind("<KeyRelease>", self.on_key_release)
             self.bind("<FocusIn>", self.show_suggestions)
             self.bind("<FocusOut>", lambda e: self.master.after(150, self.hide_popup))  # delay so clicks can register
+        
+        def on_key_release(self, event=None):
+            # Convert to lowercase as user types
+            current_pos = self.index(tk.INSERT)
+            current_text = self.get()
+            lowercase_text = current_text.lower()
+            
+            if current_text != lowercase_text:
+                self.delete(0, tk.END)
+                self.insert(0, lowercase_text)
+                self.icursor(current_pos)
+            
+            self.show_suggestions(event)
 
         def show_suggestions(self, event=None):
             if self.popup:
                 self.popup.destroy()
 
             val = self.get().lower()
-            matches = [u for u in self.suggestions if val in u.lower()]
+            # Normalize all usernames to lowercase for display
+            matches = [u.lower() for u in self.suggestions if val in u.lower()]
 
             if not matches:
                 return
@@ -328,19 +346,78 @@ def build_home_tab(parent, msg):
             self.popup.overrideredirect(True)  # no title bar
             self.popup.configure(bg="white", bd=1, relief="solid")
 
-            # Position relative to screen
-            x = self.winfo_rootx() + 30  # shift right of the entry
-            y = self.winfo_rooty() + 18  # shift below the entry
+            # Calculate dimensions
             row_height = 33
-            popup_height = row_height * len(matches)
+            max_visible_rows = 10  # Maximum rows to show before scrolling
+            visible_rows = min(len(matches), max_visible_rows)
+            popup_height = row_height * visible_rows
+            
             font = tkfont.Font(font=self.cget("font"))
-            longest_text = max(matches, key=lambda s: len(s))  # or max width
+            longest_text = max(matches, key=lambda s: len(s))
             text_width_px = font.measure(longest_text)
+            popup_width = text_width_px + 80
 
-            self.popup.geometry(f"{text_width_px + 80}x{popup_height}+{x}+{y}")
+            # Get screen dimensions
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            
+            # Calculate initial position (below the entry)
+            x = self.winfo_rootx() + 30  # shift right of the entry
+            y_below = self.winfo_rooty() + self.winfo_height() + 2  # position below entry
+            y_above = self.winfo_rooty() - popup_height - 2  # position above entry
+            
+            # Check if popup would go off bottom of screen
+            space_below = screen_height - y_below
+            if y_below + popup_height > screen_height:
+                space_above = self.winfo_rooty() - 2
+                # Position above entry if there's more space above than below
+                if y_above >= 0 and space_above >= space_below:
+                    y = max(0, y_above)  # Above, but not off top of screen
+                else:
+                    # Not enough room above, adjust height to fit below
+                    y = y_below
+                    available_height = space_below - 10  # 10px margin
+                    popup_height = min(popup_height, available_height)
+            else:
+                y = y_below
+            
+            # Ensure x doesn't go off right edge of screen
+            if x + popup_width > screen_width:
+                x = screen_width - popup_width - 10
+
+            self.popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
+
+            # Create canvas with scrollbar if needed
+            if len(matches) > max_visible_rows:
+                canvas = tk.Canvas(self.popup, bg="#2b2b2b", highlightthickness=0)
+                scrollbar = tk.Scrollbar(self.popup, orient="vertical", command=canvas.yview)
+                scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
+                
+                scrollable_frame.bind(
+                    "<Configure>",
+                    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+                )
+                
+                canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+                canvas.configure(yscrollcommand=scrollbar.set)
+                
+                canvas.pack(side="left", fill="both", expand=True)
+                scrollbar.pack(side="right", fill="y")
+                
+                container = scrollable_frame
+                
+                # Enable mousewheel scrolling
+                def on_mousewheel(event):
+                    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                
+                # Store the binding so we can clean it up later
+                self.mousewheel_binding = on_mousewheel
+                self.winfo_toplevel().bind_all("<MouseWheel>", self.mousewheel_binding)
+            else:
+                container = self.popup
 
             for user in matches:
-                row = tk.Frame(self.popup, bg="#2b2b2b")
+                row = tk.Frame(container, bg="#2b2b2b")
                 row.pack(fill="x")
 
                 lbl = tk.Label(row, text=user, font=30, pady=5, anchor="w", bg="#2b2b2b", fg="white")
@@ -370,6 +447,15 @@ def build_home_tab(parent, msg):
 
         def hide_popup(self):
             if self.popup:
+                # Clean up mousewheel binding if it exists
+                if self.mousewheel_binding:
+                    try:
+                        self.winfo_toplevel().unbind_all("<MouseWheel>")
+                    except tk.TclError:
+                        # Widget may have been destroyed already
+                        pass
+                    self.mousewheel_binding = None
+                
                 self.popup.destroy()
                 self.popup = None
 
@@ -380,9 +466,17 @@ def build_home_tab(parent, msg):
             password_entry.focus_set()
 
         def delete_user(self, username, event=None):
-            remove_username(username)
-            self.suggestions = load_usernames()
-            self.show_suggestions()
+            # Find the original username in suggestions (might have different case)
+            original_username = None
+            for u in self.suggestions:
+                if u.lower() == username.lower():
+                    original_username = u
+                    break
+            
+            if original_username:
+                remove_username(original_username)
+                self.suggestions = load_usernames()
+                self.show_suggestions()
 
 
     frame = tk.Frame(parent, bg="#2b2b2b", padx=20, pady=20)
