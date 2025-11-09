@@ -141,6 +141,21 @@ def build_settings_tab(parent):
             theme = "dark" if user_dark_var.get() else "light"
             zoom = user_zoom_var.get()
             
+            # Update runtime config and state FIRST (immediate)
+            state.zoom_var.set(zoom)
+            config.cfg["theme"] = theme
+            config.cfg["zoom_var"] = zoom
+            
+            # Update cache so next login uses new settings (immediate)
+            state.user_settings_cache[state.username] = {
+                "theme": theme,
+                "zoom": zoom
+            }
+            
+            # Apply theme changes to live browser sessions (user sees this)
+            apply_theme_to_browsers(theme)
+            
+            # Save to database LAST (background operation)
             resp = requests.post(
                 f"http://{IP}:{PORT}/update_user_settings",
                 json={"username": state.username, "theme": theme, "zoom": zoom},
@@ -148,23 +163,12 @@ def build_settings_tab(parent):
             )
             resp.raise_for_status()
             
-            # Update runtime config and state
-            state.zoom_var.set(zoom)
-            config.cfg["theme"] = theme
-            config.cfg["zoom_var"] = zoom
+            # Show success message on UI thread
+            state.root.after(0, lambda: flash_message(msg_lbl, msg_var, "Theme updated!", status='success'))
             
-            # Update cache so next login uses new settings
-            state.user_settings_cache[state.username] = {
-                "theme": theme,
-                "zoom": zoom
-            }
-            
-            # Apply theme changes to live browser sessions
-            apply_theme_to_browsers(theme)
-            
-            flash_message(msg_lbl, msg_var, "User settings saved", status='success')
         except Exception as e:
-            flash_message(msg_lbl, msg_var, f"Error saving user settings", status='error')
+            # Show error message on UI thread
+            state.root.after(0, lambda: flash_message(msg_lbl, msg_var, f"Error saving settings", status='error'))
             print(f"[ERROR] Failed to save user settings: {e}")
 
     # Auto-update department (computer-level)
@@ -194,7 +198,14 @@ def build_settings_tab(parent):
     def update_user_cfg(*_):
         # Don't save if we're just loading initial values
         if not loading_user_settings['value']:
-            save_user_settings()
+            # Show immediate feedback
+            flash_message(msg_lbl, msg_var, "Changing theme...", status='normal')
+            
+            # Do the work in background thread for responsiveness
+            def save_in_background():
+                save_user_settings()
+            
+            threading.Thread(target=save_in_background, daemon=True).start()
 
     department_var.trace_add("write", update_department)
     user_zoom_var.trace_add("write", update_user_cfg)

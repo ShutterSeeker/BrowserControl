@@ -186,6 +186,11 @@ def launch_dc():
                 opts_dc.add_argument("--disable-gpu-process-crash-limit")
                 opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
                 opts_dc.add_experimental_option("useAutomationExtension", False)
+                # Disable password save prompts
+                opts_dc.add_experimental_option("prefs", {
+                    "credentials_enable_service": False,
+                    "profile.password_manager_enabled": False
+                })
 
                 service_dc = Service(state.driver_path)
                 print("[DEBUG] Starting DC window")
@@ -335,6 +340,11 @@ def launch_sc():
                 opts_sc.add_argument("--disable-gpu-process-crash-limit")
                 opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
                 opts_sc.add_experimental_option("useAutomationExtension", False)
+                # Disable password save prompts
+                opts_sc.add_experimental_option("prefs", {
+                    "credentials_enable_service": False,
+                    "profile.password_manager_enabled": False
+                })
 
                 # create/prepare profiles & bookmarks
                 generate_bookmarks(sel)
