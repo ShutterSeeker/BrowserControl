@@ -361,11 +361,34 @@ def build_home_tab(parent, msg):
             self.deleting = False  # Flag to prevent closing on delete
             self.selected_index = -1  # Track selected suggestion
             self.filtered_matches = []  # Current filtered matches
+            self.dragging = False  # True while mouse button held inside popup (prevents premature close)
+            self.drag_sensitivity = 0.35  # Lower = slower drag scroll
             self.bind("<KeyRelease>", self.on_key_release)
             self.bind("<KeyPress>", self.on_key_press)
-            self.bind("<FocusIn>", self.show_suggestions)
+            self.bind("<FocusIn>", self.on_focus_in)
             self.bind("<FocusOut>", self.on_focus_out)
+
+        def on_focus_in(self, event=None):
+            """Show suggestions only if not already visible to avoid rebuild flicker."""
+            if self.popup and self.popup.winfo_exists():
+                return
+            self.show_suggestions()
         
+        def is_pointer_inside_popup(self):
+            """Return True if current pointer is inside the suggestions popup."""
+            if not self.popup:
+                return False
+            try:
+                x = self.popup.winfo_rootx()
+                y = self.popup.winfo_rooty()
+                w = self.popup.winfo_width()
+                h = self.popup.winfo_height()
+                px = self.winfo_pointerx()
+                py = self.winfo_pointery()
+                return x <= px <= x + w and y <= py <= y + h
+            except tk.TclError:
+                return False
+
         def on_key_press(self, event=None):
             """Handle special key presses for navigation"""
             if not self.popup or not self.filtered_matches:
@@ -426,18 +449,35 @@ def build_home_tab(parent, msg):
             self.show_suggestions(event)
         
         def on_focus_out(self, event=None):
-            # Only hide popup if we're not deleting
-            if not self.deleting:
-                self.master.after(150, self.hide_popup)
+            # If pointer still inside popup or dragging, don't close yet
+            if self.deleting:
+                return
+            if self.dragging:
+                return
+            if self.is_pointer_inside_popup():
+                # Re-check again shortly; user may start a drag
+                self.master.after(200, lambda: (not self.dragging) and (not self.deleting) and (not self.is_pointer_inside_popup()) and self.hide_popup())
+                return
+            # Normal behavior: schedule close
+            self.master.after(120, self.hide_popup)
 
         def show_suggestions(self, event=None):
-            # Destroy existing popup
-            if self.popup:
+            # Preserve scroll position if reopening
+            last_scroll = None
+            if self.popup and getattr(self, 'canvas', None):
+                try:
+                    last_scroll = self.canvas.yview()[0]
+                except Exception:
+                    last_scroll = None
+            # Destroy existing popup (only if not actively dragging)
+            if self.popup and not self.dragging:
                 self.popup.destroy()
 
             # Filter usernames case-insensitively
             val = self.get().lower()
             matches = [u.lower() for u in self.suggestions if val in u.lower()]
+            # Exclude exact match (avoid showing the same item as the field value)
+            matches = [u for u in matches if u != val]
             self.filtered_matches = matches  # Store for navigation
             if not matches:
                 self.selected_index = -1
@@ -498,6 +538,7 @@ def build_home_tab(parent, msg):
                 container.grid_rowconfigure(0, weight=1)  # Make row expandable
                 container.grid_columnconfigure(0, weight=1)  # canvas column expandable
                 container.grid_columnconfigure(1, weight=0, minsize=scrollbar_width)  # scrollbar column fixed
+                # no focus juggling; rely on pointer-based close logic
 
                 # Canvas + internal frame
                 canvas = tk.Canvas(container, bg="#2b2b2b", highlightthickness=0)
@@ -507,6 +548,9 @@ def build_home_tab(parent, msg):
                 
                 # Store canvas reference for scrolling
                 self.canvas = canvas
+                # Restore previous scroll position if available and valid
+                if last_scroll is not None:
+                    self.popup.after(30, lambda: canvas.yview_moveto(last_scroll))
 
                 # Scrollbar for when needed
                 style = ttk.Style()
@@ -533,12 +577,62 @@ def build_home_tab(parent, msg):
                 # No scrollbar needed - direct container
                 container_frame = self.popup
 
-            # Mousewheel support (only when scrollbar is present)
+            # Mousewheel and vertical-only drag support (only when scrollbar is present)
             if needs_scrollbar:
                 def on_mousewheel(event):
                     canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
                 self.winfo_toplevel().bind_all("<MouseWheel>", on_mousewheel)
                 self.mousewheel_binding = on_mousewheel
+
+                canvas.is_dragging = False
+                self.dragging = False
+                canvas.drag_start_y = 0
+                canvas.drag_origin_top = 0.0
+
+                def clamp_view():
+                    top, bottom = canvas.yview()
+                    if top < 0:
+                        canvas.yview_moveto(0)
+                    elif bottom > 1:
+                        height_fraction = bottom - top
+                        new_top = max(0, 1 - height_fraction)
+                        canvas.yview_moveto(new_top)
+
+                def on_drag_start(event):
+                    canvas.is_dragging = True
+                    self.dragging = True
+                    canvas.drag_start_y = event.y_root
+                    canvas.drag_origin_top = canvas.yview()[0]
+                    canvas.config(cursor="hand2")
+
+                def on_drag_motion(event):
+                    if not canvas.is_dragging:
+                        return
+                    dy = event.y_root - canvas.drag_start_y
+                    bbox = canvas.bbox("all")
+                    if not bbox:
+                        return
+                    _, _, _, content_bottom = bbox
+                    content_height = content_bottom
+                    visible_height = canvas.winfo_height()
+                    if content_height <= visible_height:
+                        return
+                    fraction_per_pixel = 1.0 / (content_height - visible_height)
+                    # Apply sensitivity to slow down drag scrolling
+                    new_top = canvas.drag_origin_top - dy * fraction_per_pixel * self.drag_sensitivity
+                    new_top = max(0.0, min(1.0, new_top))
+                    canvas.yview_moveto(new_top)
+                    clamp_view()
+
+                def on_drag_end(event):
+                    canvas.is_dragging = False
+                    self.dragging = False
+                    clamp_view()
+                    canvas.config(cursor="")
+
+                canvas.bind("<ButtonPress-1>", on_drag_start)
+                canvas.bind("<B1-Motion>", on_drag_motion)
+                canvas.bind("<ButtonRelease-1>", on_drag_end)
 
             # Configure container frame to expand properly
             container_frame.grid_columnconfigure(0, weight=1) if hasattr(container_frame, 'grid_columnconfigure') else None
@@ -547,6 +641,9 @@ def build_home_tab(parent, msg):
 
             # Store row widgets for selection highlighting
             self.row_widgets = []
+            
+            # Track drag threshold for distinguishing clicks from drags
+            self.drag_threshold = 5  # pixels - movement less than this is considered a click
             
             # Populate rows (grid for consistent layout)
             for i, user in enumerate(matches):
@@ -609,12 +706,41 @@ def build_home_tab(parent, msg):
 
                 on_enter_row, on_leave_row, on_enter_x_only, on_leave_x_only = make_hover_handlers(row, lbl, del_frame, del_lbl, i)
                 
+                # Enable drag scrolling on row widgets when scrollbar is present
+                if needs_scrollbar:
+                    # Click vs vertical drag differentiation
+                    drag_state = {'start_y': None, 'moved': False}
+
+                    def row_press(event, username=user):
+                        drag_state['start_y'] = event.y_root
+                        drag_state['moved'] = False
+                        on_drag_start(event)
+
+                    def row_motion(event):
+                        if drag_state['start_y'] is not None and abs(event.y_root - drag_state['start_y']) > self.drag_threshold:
+                            drag_state['moved'] = True
+                        on_drag_motion(event)
+
+                    def row_release(event, username=user):
+                        on_drag_end(event)
+                        if drag_state['start_y'] is not None and not drag_state['moved']:
+                            self.select_user(username)
+                        drag_state['start_y'] = None
+                        drag_state['moved'] = False
+
+                    for widget in (row, lbl):
+                        widget.bind("<ButtonPress-1>", row_press)
+                        widget.bind("<B1-Motion>", row_motion)
+                        widget.bind("<ButtonRelease-1>", row_release)
+                else:
+                    # No scrollbar - just bind click event directly
+                    lbl.bind("<Button-1>", partial(self.select_user, user))
+                
                 # Row and label hover - highlight everything
                 row.bind("<Enter>", on_enter_row)
                 row.bind("<Leave>", on_leave_row)
                 lbl.bind("<Enter>", on_enter_row)
                 lbl.bind("<Leave>", on_leave_row)
-                lbl.bind("<Button-1>", partial(self.select_user, user))
                 
                 # X button hover - only highlight X
                 del_frame.bind("<Enter>", on_enter_x_only)
@@ -622,12 +748,24 @@ def build_home_tab(parent, msg):
                 del_lbl.bind("<Enter>", on_enter_x_only)
                 del_lbl.bind("<Leave>", on_leave_x_only)
 
-            # Update scrollregion when scrollbar is present
+            # Keep scrollregion in sync with content size; preserve current view to avoid jumps
             if needs_scrollbar:
                 def _update_region(event=None):
-                    canvas.configure(scrollregion=canvas.bbox("all"))
+                    if hasattr(canvas, 'is_dragging') and canvas.is_dragging:
+                        return
+                    try:
+                        current_top = canvas.yview()[0]
+                    except Exception:
+                        current_top = 0.0
+                    bbox = canvas.bbox("all")
+                    if bbox:
+                        canvas.configure(scrollregion=bbox)
+                    # prevent any horizontal drift
+                    canvas.xview_moveto(0)
+                    # restore vertical position
+                    canvas.yview_moveto(current_top)
                 inner.bind("<Configure>", _update_region)
-                self.popup.after(20, _update_region)
+                self.popup.after(30, _update_region)
 
 
         def update_selection_highlight(self):
@@ -750,11 +888,42 @@ def build_home_tab(parent, msg):
     # Username + Password
     tk.Label(frame, text="Username:", bg="#2b2b2b", fg="white").grid(row=1, column=0, sticky="e", pady=5)
     tk.Label(frame, text="Password:", bg="#2b2b2b", fg="white").grid(row=2, column=0, sticky="e", pady=5)
+    # Keep inputs narrower and aligned (no full-width stretch)
+    try:
+        frame.grid_columnconfigure(1, weight=0)
+    except Exception:
+        pass
 
-    username_entry = AutoSuggestEntry(frame)
-    username_entry.grid(row=1, column=1, pady=5, sticky="e")
-    password_entry = ttk.Entry(frame, show="*")
-    password_entry.grid(row=2, column=1, pady=5, sticky="e")
+    # Wrap username entry in a frame to add a clear (✕) button
+    username_wrapper = tk.Frame(frame, bg="#2b2b2b")
+    username_wrapper.grid(row=1, column=1, pady=5, sticky="w")
+    username_wrapper.grid_columnconfigure(0, weight=1)
+    username_wrapper.grid_columnconfigure(1, weight=0)
+
+    username_entry = AutoSuggestEntry(username_wrapper, width=16)
+    username_entry.grid(row=0, column=0, sticky="w")
+
+    def clear_username():
+        username_entry.delete(0, tk.END)
+        # Refresh suggestions (will show all since empty)
+        username_entry.show_suggestions()
+        username_entry.focus_set()
+
+    # Style a small clear button to look like an inline control
+    try:
+        style = ttk.Style()
+        style.configure("ClearButton.TButton", padding=(4, 0))
+    except Exception:
+        pass
+
+    clear_btn = ttk.Button(username_wrapper, text="✕", style="ClearButton.TButton", cursor="hand2", width=2)
+    clear_btn.grid(row=0, column=1, padx=(6,0))
+    clear_btn.configure(command=clear_username)
+
+    # Always visible; no hiding logic. Ensure suggestions update on typing.
+    username_entry.bind("<KeyRelease>", lambda e: username_entry.on_key_release(e))
+    password_entry = ttk.Entry(frame, show="*", width=16)
+    password_entry.grid(row=2, column=1, pady=5, sticky="w")
 
     def on_login_submit():
         username = username_entry.get()
@@ -911,8 +1080,20 @@ def build_home_tab(parent, msg):
 
 
     def hide_login_form():
-        username_entry.grid_remove()
-        password_entry.grid_remove()
+        # Destroy username suggestion artifacts (popup + wrapper)
+        try:
+            if hasattr(username_entry, 'popup') and username_entry.popup:
+                username_entry.popup.destroy()
+        except Exception:
+            pass
+        try:
+            username_wrapper.destroy()
+        except Exception:
+            pass
+        try:
+            password_entry.destroy()
+        except Exception:
+            pass
         msg_lbl.grid_remove()
         submit_btn.grid_remove()
 
