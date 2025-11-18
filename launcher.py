@@ -182,8 +182,13 @@ def launch_dc():
                 opts_dc = webdriver.ChromeOptions()
                 opts_dc.add_argument(f"--user-data-dir={dc_profile}")
                 opts_dc.add_argument("--log-level=3")
-                # Add flag to prevent profile lock issues
-                opts_dc.add_argument("--disable-gpu-process-crash-limit")
+                
+                # Add stability flags to prevent Chrome crashes
+                opts_dc.add_argument("--no-sandbox")  # Bypass OS security model (needed in some environments)
+                opts_dc.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+                opts_dc.add_argument("--disable-gpu-process-crash-limit")  # Prevent profile lock issues
+                opts_dc.add_argument("--disable-features=VizDisplayCompositor")  # Reduce GPU issues
+                
                 opts_dc.add_experimental_option("excludeSwitches", ["enable-automation"])
                 opts_dc.add_experimental_option("useAutomationExtension", False)
                 # Disable password save prompts
@@ -192,7 +197,8 @@ def launch_dc():
                     "profile.password_manager_enabled": False
                 })
 
-                service_dc = Service(state.driver_path)
+                # Enable verbose logging for debugging
+                service_dc = Service(state.driver_path, log_output=os.path.join(dc_profile, "chromedriver.log"))
                 print("[DEBUG] Starting DC window")
                 try:
                     state.driver_dc = webdriver.Chrome(service=service_dc, options=opts_dc)
@@ -219,8 +225,19 @@ def launch_dc():
                         cache_dir.mkdir(parents=True, exist_ok=True)
                         (cache_dir / ".version_mismatch").touch()
                     
-                    # Log and report the error
-                    log_chrome_launch_error(e)
+                    # Try to read ChromeDriver log for additional context
+                    log_file = os.path.join(dc_profile, "chromedriver.log")
+                    log_content = ""
+                    try:
+                        if os.path.exists(log_file):
+                            with open(log_file, 'r') as f:
+                                log_content = f.read()
+                            print(f"[DEBUG] ChromeDriver log content:\n{log_content}")
+                    except Exception as log_err:
+                        print(f"[WARNING] Could not read ChromeDriver log: {log_err}")
+                    
+                    # Log and report the error with log content
+                    log_chrome_launch_error(e, chromedriver_log=log_content)
                     raise
                     
                 apply_window_geometry(state.driver_dc, "dc")
@@ -336,8 +353,13 @@ def launch_sc():
                 opts_sc = webdriver.ChromeOptions()
                 opts_sc.add_argument(f"--user-data-dir={sc_profile}")
                 opts_sc.add_argument("--log-level=3")
-                # Add flag to prevent profile lock issues
-                opts_sc.add_argument("--disable-gpu-process-crash-limit")
+                
+                # Add stability flags to prevent Chrome crashes
+                opts_sc.add_argument("--no-sandbox")  # Bypass OS security model (needed in some environments)
+                opts_sc.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+                opts_sc.add_argument("--disable-gpu-process-crash-limit")  # Prevent profile lock issues
+                opts_sc.add_argument("--disable-features=VizDisplayCompositor")  # Reduce GPU issues
+                
                 opts_sc.add_experimental_option("excludeSwitches", ["enable-automation"])
                 opts_sc.add_experimental_option("useAutomationExtension", False)
                 # Disable password save prompts
@@ -349,7 +371,8 @@ def launch_sc():
                 # create/prepare profiles & bookmarks
                 generate_bookmarks(sel)
                 
-                service_sc = Service(state.driver_path)
+                # Enable verbose logging for debugging
+                service_sc = Service(state.driver_path, log_output=os.path.join(sc_profile, "chromedriver.log"))
                 print("[DEBUG] Starting Scale window")
                 try:
                     state.driver_sc = webdriver.Chrome(service=service_sc, options=opts_sc)
@@ -376,8 +399,19 @@ def launch_sc():
                         cache_dir.mkdir(parents=True, exist_ok=True)
                         (cache_dir / ".version_mismatch").touch()
                     
-                    # Log and report the error
-                    log_chrome_launch_error(e)
+                    # Try to read ChromeDriver log for additional context
+                    log_file = os.path.join(sc_profile, "chromedriver.log")
+                    log_content = ""
+                    try:
+                        if os.path.exists(log_file):
+                            with open(log_file, 'r') as f:
+                                log_content = f.read()
+                            print(f"[DEBUG] ChromeDriver log content:\n{log_content}")
+                    except Exception as log_err:
+                        print(f"[WARNING] Could not read ChromeDriver log: {log_err}")
+                    
+                    # Log and report the error with log content
+                    log_chrome_launch_error(e, chromedriver_log=log_content)
                     raise
                     
                 apply_window_geometry(state.driver_sc, "sc")
