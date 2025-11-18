@@ -300,10 +300,14 @@ def log_startup_error(exception):
     )
 
 
-def log_chrome_launch_error(exception):
-    """Log Chrome launch errors with full context"""
+def log_chrome_launch_error(exception, chromedriver_log=""):
+    """Log Chrome launch errors with full context including ChromeDriver logs"""
     error_message = str(exception)
     traceback_str = traceback.format_exc()
+    
+    # Append ChromeDriver log if available
+    if chromedriver_log:
+        traceback_str += f"\n\n=== ChromeDriver Log ===\n{chromedriver_log}\n"
     
     # Check if it's a version mismatch
     if "This version of ChromeDriver" in error_message and "Current browser version is" in error_message:
