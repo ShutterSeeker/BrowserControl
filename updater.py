@@ -114,9 +114,6 @@ $newExe = "{new_exe_path}"
 $currentExe = "{current_exe}"
 $backupExe = "{backup_exe}"
 
-Write-Host "Waiting 3 seconds for app to close..." -ForegroundColor Yellow
-Start-Sleep -Seconds 3
-
 # Check if new exe exists
 if (-not (Test-Path $newExe)) {{
     Write-Host "ERROR: New exe not found at $newExe" -ForegroundColor Red
@@ -156,15 +153,6 @@ try {{
     exit 1
 }}
 
-# Verify new exe exists
-if (Test-Path $currentExe) {{
-    Write-Host "SUCCESS: New exe exists at $currentExe" -ForegroundColor Green
-}} else {{
-    Write-Host "ERROR: New exe does not exist after copy!" -ForegroundColor Red
-    pause
-    exit 1
-}}
-
 # Clean up temp file
 if (Test-Path $newExe) {{
     Remove-Item -Path $newExe -Force -ErrorAction SilentlyContinue
@@ -176,45 +164,16 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "Update Complete!" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Preparing to restart BrowserControl..." -ForegroundColor White
+Write-Host "Update installed. Please reopen BrowserControl." -ForegroundColor White
 
-# Unblock file to remove MOTW and reduce AV interference
-try {{ Unblock-File -Path $currentExe -ErrorAction SilentlyContinue }} catch {{}}
-
-# Clear Python environment variables so PyInstaller bootloader isn't confused
-$prevPythonHome = $env:PYTHONHOME
-$prevPythonPath = $env:PYTHONPATH
-$env:PYTHONHOME = $null
-$env:PYTHONPATH = $null
-
-# Retry relaunch with exponential backoff (handles AV/locking timing)
-$launched = $false
-$retries = 4
-$delay = 1
-for ($i = 1; $i -le $retries; $i++) {{
-    try {{
-        Start-Process -FilePath $currentExe -WorkingDirectory (Split-Path -Path $currentExe)
-        Write-Host "Launched BrowserControl (attempt $i)" -ForegroundColor Green
-        $launched = $true
-        break
-    }} catch {{
-        Write-Host "Launch attempt $i failed: $_" -ForegroundColor Yellow
-        Start-Sleep -Seconds $delay
-        $delay = [Math]::Min(8, $delay * 2)
-    }}
-}}
-
-# Restore environment variables
-$env:PYTHONHOME = $prevPythonHome
-$env:PYTHONPATH = $prevPythonPath
-
-if (-not $launched) {{
-    Write-Host "WARNING: Could not relaunch BrowserControl automatically." -ForegroundColor Yellow
-    Write-Host "You can launch it manually from: $currentExe" -ForegroundColor White
-}}
-
-Write-Host "Closing update script in 3 seconds..." -ForegroundColor Yellow
-Start-Sleep -Seconds 3
+# Show a Windows message box so the user sees a clear instruction
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.MessageBox]::Show(
+    "BrowserControl has been updated successfully.`n`nPlease reopen the app from the Start menu or desktop shortcut.",
+    "BrowserControl Updated",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Information
+)
 
 # Delete this script after successful update
 Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
