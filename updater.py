@@ -176,8 +176,19 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "Update Complete!" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "You can now launch BrowserControl" -ForegroundColor White
-Write-Host ""
+Write-Host "Restarting BrowserControl..." -ForegroundColor White
+
+# Relaunch the updated application
+try {{
+    Start-Process -FilePath $currentExe -WorkingDirectory (Split-Path -Path $currentExe)
+    Write-Host "Launched BrowserControl" -ForegroundColor Green
+}} catch {{
+    Write-Host "WARNING: Could not relaunch BrowserControl automatically: $_" -ForegroundColor Yellow
+    Write-Host "You can launch it manually from: $currentExe" -ForegroundColor White
+}}
+
+Write-Host "Closing update script in 3 seconds..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
 
 # Delete this script after successful update
 Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue

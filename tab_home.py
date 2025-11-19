@@ -1097,6 +1097,12 @@ def build_home_tab(parent, msg):
         msg_lbl.grid_remove()
         submit_btn.grid_remove()
 
+        # Remove Update button and its container if present so it doesn't linger under other UI
+        try:
+            button_container.destroy()
+        except Exception:
+            pass
+
         for widget in frame.grid_slaves():
             if isinstance(widget, tk.Label) and widget.cget("text") in ("Username:", "Password:"):
                 widget.grid_remove()
