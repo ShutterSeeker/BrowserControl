@@ -12,10 +12,13 @@ from utils import get_path
 from launcher import launch_dc, launch_sc, setup_dc, setup_sc
 from constants import DC_TITLE, SC_TITLE
 from retry_utils import wait_for_window, retry_with_backoff
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from tkinter import messagebox
+import traceback
 
 def set_window_state(win, state):
     if state == 'maximized':
@@ -307,56 +310,140 @@ def select_on_scale(logistics_unit: str, gtin: str):
         if "DecantProcessing.aspx" not in state.driver_sc.current_url:
             continue
 
-        # Helper to interact with field with retry logic
-        def interact_with_field(locator, value, field_name, max_retries=3):
+        # Helper to interact with field with robust retry logic (handles DOM replacement)
+        def interact_with_field(locator, value, field_name, max_retries=4):
+            last_exc = None
             for attempt in range(max_retries):
                 try:
                     print(f"[DEBUG] Attempting to fill {field_name} with '{value}' (attempt {attempt + 1}/{max_retries})")
-                    # Wait for element to be present and clickable
-                    element = WebDriverWait(state.driver_sc, 10).until(
+                    # Always re-locate the element (avoid stale references)
+                    WebDriverWait(state.driver_sc, 5).until(
+                        EC.presence_of_element_located(locator)
+                    )
+                    element = WebDriverWait(state.driver_sc, 5).until(
                         EC.element_to_be_clickable(locator)
                     )
-                    # Wait for page to be stable
-                    state.driver_sc.execute_script("return document.readyState") == "complete"
-                    
-                    # Clear and enter value
-                    element.clear()
-                    time.sleep(0.1)  # Brief pause after clear
+
+                    # Focus the element to reduce chances of update panel swapping it out
+                    try:
+                        state.driver_sc.execute_script("arguments[0].focus();", element)
+                    except Exception:
+                        pass
+
+                    # Robust clear: try Ctrl+A then Delete, fallback to clear() and JS
+                    try:
+                        element.send_keys(Keys.CONTROL, "a")
+                        element.send_keys(Keys.DELETE)
+                    except Exception:
+                        try:
+                            element.clear()
+                        except Exception:
+                            try:
+                                state.driver_sc.execute_script("arguments[0].value = '';", element)
+                            except Exception:
+                                pass
+
+                    time.sleep(0.05)
                     element.send_keys(value)
-                    print(f"[DEBUG] Successfully filled {field_name}")
-                    return True, None  # Success
-                    
-                except StaleElementReferenceException:
-                    if attempt < max_retries - 1:
-                        # Wait before retry with exponential backoff
-                        time.sleep(0.5 * (2 ** attempt))
-                        continue
+
+                    # Verify the value stuck (re-locate in case the node was swapped)
+                    def value_is_set(d):
+                        try:
+                            el = d.find_element(*locator)
+                            return el.get_attribute("value") == value
+                        except Exception:
+                            return False
+
+                    if WebDriverWait(state.driver_sc, 3).until(value_is_set):
+                        print(f"[DEBUG] Successfully filled {field_name}")
+                        return True, None
                     else:
-                        return False, f"Element became stale after {max_retries} attempts"
+                        raise Exception("Value did not persist (DOM likely refreshed)")
+
+                except (StaleElementReferenceException, WebDriverException) as e:
+                    # Treat Chrome 'Node with given id does not belong to the document' as stale
+                    msg = str(e)
+                    if "Node with given id does not belong to the document" in msg:
+                        print(f"[RETRY] {field_name}: element replaced during postback; retrying...")
+                    else:
+                        print(f"[RETRY] {field_name}: {type(e).__name__}: {msg}")
+                    last_exc = e
+                    time.sleep(0.25 * (2 ** attempt))
+                    continue
                 except Exception as e:
-                    return False, f"{type(e).__name__}: {str(e)}"
-            
-            return False, "Max retries exceeded"
+                    last_exc = e
+                    time.sleep(0.25 * (2 ** attempt))
+                    continue
+
+            return False, f"{type(last_exc).__name__}: {last_exc}"
         
         # Helper to wait for page postback to complete
         def wait_for_postback(timeout=5):
-            """Wait for ASP.NET postback to complete"""
+            """Wait for ASP.NET (UpdatePanel) postback to complete if any."""
             try:
-                # Wait for any loading indicators or for document to be ready
-                WebDriverWait(state.driver_sc, timeout).until(
-                    lambda driver: driver.execute_script("return document.readyState") == "complete"
-                )
-                # Additional wait for any AJAX/postback to settle
-                time.sleep(0.1)
+                def ajax_complete(d):
+                    try:
+                        return bool(d.execute_script(
+                            "return (document.readyState === 'complete') && !((window.Sys && Sys.WebForms && Sys.WebForms.PageRequestManager && Sys.WebForms.PageRequestManager.getInstance && Sys.WebForms.PageRequestManager.getInstance().get_isInAsyncPostBack && Sys.WebForms.PageRequestManager.getInstance().get_isInAsyncPostBack()))"
+                        ))
+                    except Exception:
+                        return d.execute_script("return document.readyState") == "complete"
+
+                WebDriverWait(state.driver_sc, timeout).until(ajax_complete)
+                time.sleep(0.05)
                 return True
             except Exception as e:
                 print(f"[WARNING] Postback wait failed: {e}")
                 return False
         
+        # Helper: copy LP to clipboard and show friendly popup (on UI thread if available)
+        def notify_user_failure(copy_text: str | None, friendly_text: str):
+            def do_notify():
+                try:
+                    if getattr(state, 'root', None) and copy_text:
+                        try:
+                            state.root.clipboard_clear()
+                            state.root.clipboard_append(copy_text)
+                        except Exception:
+                            pass
+                    messagebox.showerror("Input Issue", friendly_text)
+                except Exception:
+                    pass
+
+            if getattr(state, 'root', None):
+                try:
+                    state.root.after(0, do_notify)
+                    return
+                except Exception:
+                    pass
+            # Fallback: call directly
+            do_notify()
+
         # Pallet LP field
         lp_locator = (By.NAME, "txtPalletLP")
         success, error = interact_with_field(lp_locator, logistics_unit, "Pallet LP")
         if not success:
+            # Auto-report to GitHub and show friendly popup with clipboard support
+            try:
+                from error_reporter import log_scale_input_error
+                log_scale_input_error(
+                    context="Pallet LP",
+                    error_message=f"Could not set pallet LP: {error}",
+                    extra_info={
+                        "current_url": getattr(state.driver_sc, 'current_url', ''),
+                        "lp": logistics_unit,
+                        "gtin": gtin,
+                    },
+                    traceback_str=traceback.format_exc()
+                )
+            except Exception:
+                pass
+
+            friendly = (
+                "Failed to enter values. The license plate has been copied to your clipboard.\n"
+                "Paste it into the page manually, then continue."
+            )
+            notify_user_failure(logistics_unit, friendly)
             return False, f"Could not set pallet LP: {error}"
         
         # Wait for the page to finish its postback after LP entry
@@ -370,6 +457,27 @@ def select_on_scale(logistics_unit: str, gtin: str):
             item_locator = (By.NAME, "txtItem")
             success, error = interact_with_field(item_locator, gtin, "Item")
             if not success:
+                # Auto-report to GitHub and show friendly popup with clipboard support
+                try:
+                    from error_reporter import log_scale_input_error
+                    log_scale_input_error(
+                        context="Item",
+                        error_message=f"Could not set item: {error}",
+                        extra_info={
+                            "current_url": getattr(state.driver_sc, 'current_url', ''),
+                            "lp": logistics_unit,
+                            "gtin": gtin,
+                        },
+                        traceback_str=traceback.format_exc()
+                    )
+                except Exception:
+                    pass
+
+                friendly = (
+                    "Failed to enter item. Scan the GTIN into the Item field."
+                )
+                # Do NOT modify clipboard for item failures; scanning is preferred
+                notify_user_failure(None, friendly)
                 return False, f"Could not set item: {error}"
             
             return True, f"{logistics_unit} and item entered!"

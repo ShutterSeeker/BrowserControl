@@ -363,3 +363,53 @@ __all__ = [
     'log_chrome_launch_error',
     'get_system_info',
 ]
+
+# ---- Domain-specific helpers -------------------------------------------------
+def log_scale_input_error(context: str, error_message: str, extra_info: dict | None = None, traceback_str: str | None = None):
+    """
+    Log failures that occur while entering values on the Scale Decant page.
+
+    Args:
+        context: Short label for the failed action (e.g., 'Pallet LP', 'Item').
+        error_message: The error that was surfaced to the caller.
+        extra_info: Optional dictionary of useful context (e.g., url, user, attempts).
+        traceback_str: Optional traceback to include.
+
+    Returns:
+        The structured report dict from report_critical_error.
+    """
+    try:
+        details = extra_info or {}
+        sys_info = get_system_info()
+        payload = {
+            **details,
+            "context": context,
+            "hostname": sys_info.get("hostname"),
+            "app_version": sys_info.get("app_version"),
+        }
+
+        # Compose a compact message with JSON payload appended for GitHub triage
+        compact = error_message
+        try:
+            compact += "\n\nContext: " + json.dumps(payload, indent=2, sort_keys=True)
+        except Exception:
+            pass
+
+        return report_critical_error(
+            error_type="Scale Input Failure",
+            error_message=compact,
+            traceback_str=traceback_str,
+            create_issue=True,
+            show_popup=False,
+        )
+    except Exception:
+        # Avoid cascading failures
+        logger.exception("Failed to report Scale input error")
+        return {
+            "error_type": "Scale Input Failure",
+            "error_message": error_message,
+            "traceback": traceback_str,
+            "system_info": get_system_info(),
+            "duplicate": False,
+        }
+
