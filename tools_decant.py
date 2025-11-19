@@ -30,7 +30,7 @@ def build_decant_tools(parent):
         frame, textvariable=gtin_var,
     )
     gtin_entry.grid(row=1, column=1, sticky="ew", padx=(0,5))
-
+    
     # Search button
     def on_search():
         gtin = gtin_var.get().strip()
@@ -64,8 +64,16 @@ def build_decant_tools(parent):
         else:
             msg_var.set(f"{len(rows)} LPs found")
 
+        # Close any existing results window before opening a new one
+        try:
+            if state.decant_gtin_results_win and state.decant_gtin_results_win.winfo_exists():
+                state.decant_gtin_results_win.destroy()
+        except Exception:
+            pass
+
         # Display results in new window
-        result_win = tk.Toplevel(frame)
+        state.decant_gtin_results_win = tk.Toplevel(frame)
+        result_win = state.decant_gtin_results_win
         result_win.title("Decant Search Results")
         result_win.configure(bg="#2b2b2b")
 
@@ -120,8 +128,8 @@ def build_decant_tools(parent):
                     msg_lbl.config(fg="white")
                 frame.after(3000, reset_message)
             
-            if result_win and result_win.winfo_exists():
-                result_win.destroy()
+            if state.decant_gtin_results_win and state.decant_gtin_results_win.winfo_exists():
+                state.decant_gtin_results_win.destroy()
 
         for r, row in enumerate(rows, start=1):
             values = (

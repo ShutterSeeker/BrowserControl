@@ -23,6 +23,7 @@ click_blocker = None
 relaunched = False
 settings_frame = None  # Reference to settings tab for refreshing after login
 logged_in = False  # Track login state for user-specific settings
+decant_gtin_results_win = None  # Toplevel window for Decant GTIN search results
 
 # User settings cache (pre-loaded during splash screen for fast login)
 # Format: {"username": {"theme": "dark", "zoom": "200"}, ...}
