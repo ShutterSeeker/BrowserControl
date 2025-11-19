@@ -176,14 +176,40 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "Update Complete!" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Restarting BrowserControl..." -ForegroundColor White
+Write-Host "Preparing to restart BrowserControl..." -ForegroundColor White
 
-# Relaunch the updated application
-try {{
-    Start-Process -FilePath $currentExe -WorkingDirectory (Split-Path -Path $currentExe)
-    Write-Host "Launched BrowserControl" -ForegroundColor Green
-}} catch {{
-    Write-Host "WARNING: Could not relaunch BrowserControl automatically: $_" -ForegroundColor Yellow
+# Unblock file to remove MOTW and reduce AV interference
+try {{ Unblock-File -Path $currentExe -ErrorAction SilentlyContinue }} catch {{}}
+
+# Clear Python environment variables so PyInstaller bootloader isn't confused
+$prevPythonHome = $env:PYTHONHOME
+$prevPythonPath = $env:PYTHONPATH
+$env:PYTHONHOME = $null
+$env:PYTHONPATH = $null
+
+# Retry relaunch with exponential backoff (handles AV/locking timing)
+$launched = $false
+$retries = 4
+$delay = 1
+for ($i = 1; $i -le $retries; $i++) {{
+    try {{
+        Start-Process -FilePath $currentExe -WorkingDirectory (Split-Path -Path $currentExe)
+        Write-Host "Launched BrowserControl (attempt $i)" -ForegroundColor Green
+        $launched = $true
+        break
+    }} catch {{
+        Write-Host "Launch attempt $i failed: $_" -ForegroundColor Yellow
+        Start-Sleep -Seconds $delay
+        $delay = [Math]::Min(8, $delay * 2)
+    }}
+}}
+
+# Restore environment variables
+$env:PYTHONHOME = $prevPythonHome
+$env:PYTHONPATH = $prevPythonPath
+
+if (-not $launched) {{
+    Write-Host "WARNING: Could not relaunch BrowserControl automatically." -ForegroundColor Yellow
     Write-Host "You can launch it manually from: $currentExe" -ForegroundColor White
 }}
 
